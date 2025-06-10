@@ -48,6 +48,7 @@ io.on("connection", (socket) => {
     }
   });
 
+
   socket.on("disconnect", () => {
     for (const code in games) {
       const idx = games[code].players.indexOf(socket.id);

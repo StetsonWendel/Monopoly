@@ -173,10 +173,7 @@ window.onload = () => {
     }
   });
 
-  startGameBtn.onclick = async () => {
-    await loadGameModule(selectedGame);
-    showMenu(gameContainer);
-    currentGameModule.startMultiplayerGame(gameContainer, players, socket, waitingGameCode.textContent, socket.id);
+  startGameBtn.onclick = () => {
     socket.emit("start-game", waitingGameCode.textContent);
   };
 
@@ -209,4 +206,16 @@ window.onload = () => {
     if (currentGameModule && currentGameModule.key === gameKey) return;
     currentGameModule = require(`./games/${gameKey}/${gameKey}.js`);
   }
+
+  socket.on("game-started", async () => {
+    await loadGameModule(selectedGame);
+    showMenu(gameContainer);
+    currentGameModule.startMultiplayerGame(
+      gameContainer,
+      players,
+      socket,
+      waitingGameCode.textContent,
+      socket.id
+    );
+  });
 };

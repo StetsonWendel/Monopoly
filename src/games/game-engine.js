@@ -3,24 +3,10 @@ class GameEngine {
     this.board = board;
     this.players = players;
     this.currentTurn = 0;
-    this.playerPositions = {};
-    players.forEach(p => this.playerPositions[p.id] = 0);
+    // Game-agnostic: don't assume player positions or dice
   }
 
-  rollDice() {
-    return {
-      d1: Math.ceil(Math.random() * 6),
-      d2: Math.ceil(Math.random() * 6),
-      mega: Math.ceil(Math.random() * 6)
-    };
-  }
-
-  movePlayer(playerId, spaces) {
-    this.playerPositions[playerId] = (this.playerPositions[playerId] + spaces) % this.board.length;
-    return this.playerPositions[playerId];
-  }
-
-  // Add more: handle rent, buying, bus tickets, etc.
+  // Add only generic, game-agnostic methods here
 }
 
 module.exports = { GameEngine };

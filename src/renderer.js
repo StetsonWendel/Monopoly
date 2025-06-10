@@ -2,36 +2,41 @@ const { io } = require("socket.io-client");
 const socket = io("http://localhost:3000");
 
 window.onload = () => {
+  // UI references
   const mainMenu = document.getElementById('main-menu');
   const multiplayerMenu = document.getElementById('multiplayer-menu');
   const hostMenu = document.getElementById('host-menu');
   const joinMenu = document.getElementById('join-menu');
   const playerSetupMenu = document.getElementById('player-setup-menu');
+  const waitingRoom = document.getElementById('waiting-room');
+  const gameContainer = document.getElementById('game-container');
+  const gameSelect = document.getElementById('game-select');
+  const playerUsername = document.getElementById('player-username');
   const gameCodeSpan = document.getElementById('game-code');
   const joinCodeInput = document.getElementById('join-code');
   const playerColor = document.getElementById('player-color');
   const aiCount = document.getElementById('ai-count');
-  const waitingRoom = document.getElementById('waiting-room');
   const waitingGameCode = document.getElementById('waiting-game-code');
   const playerCountSpan = document.getElementById('player-count');
   const startGameBtn = document.getElementById('start-game');
   const waitingBackBtn = document.getElementById('waiting-back');
   const playerListDiv = document.getElementById('player-list');
-  const playerUsername = document.getElementById('player-username');
-  const gameBoard = document.getElementById('game-board');
-  const boardContainer = document.getElementById('board-container');
-  const gameInfo = document.getElementById('game-info');
-  const leaveGameBtn = document.getElementById('leave-game');
 
-  let isHost = false;
-  let playerPositions = {}; // { playerId: squareIndex }
+  let selectedGame = gameSelect.value;
+  let currentGameModule = null;
+  let players = [];
 
   function showMenu(menu) {
-    [mainMenu, multiplayerMenu, hostMenu, joinMenu, playerSetupMenu, waitingRoom, gameBoard].forEach(m => m.classList.add('hidden'));
+    [mainMenu, multiplayerMenu, hostMenu, joinMenu, playerSetupMenu, waitingRoom, gameContainer].forEach(m => m.classList.add('hidden'));
     menu.classList.remove('hidden');
   }
 
-  document.getElementById('single-player').onclick = () => {
+  gameSelect.onchange = () => {
+    selectedGame = gameSelect.value;
+  };
+
+  document.getElementById('single-player').onclick = async () => {
+    await loadGameModule(selectedGame);
     showMenu(playerSetupMenu);
   };
 
@@ -39,13 +44,11 @@ window.onload = () => {
     showMenu(multiplayerMenu);
   };
 
-  document.getElementById('host-game').onclick = () => {
+  document.getElementById('host-game').onclick = async () => {
     const code = Math.random().toString(36).substring(2, 8).toUpperCase();
     gameCodeSpan.textContent = code;
     showMenu(hostMenu);
     socket.emit("host-game", code);
-
-    // Send username and color after hosting
     socket.emit("set-username", {
       gameCode: code,
       username: playerUsername.value.trim().substring(0, 16)
@@ -54,8 +57,6 @@ window.onload = () => {
       gameCode: code,
       color: playerColor.value
     });
-
-    isHost = true;
   };
 
   document.getElementById('join-game').onclick = () => {
@@ -79,8 +80,6 @@ window.onload = () => {
     const code = joinCodeInput.value.trim().toUpperCase();
     if (code.length === 6) {
       socket.emit("join-game", code);
-
-      // Send username and color after joining
       socket.emit("set-username", {
         gameCode: code,
         username: playerUsername.value.trim().substring(0, 16)
@@ -94,12 +93,11 @@ window.onload = () => {
     }
   };
 
-  document.getElementById('player-setup-confirm').onclick = () => {
+  document.getElementById('player-setup-confirm').onclick = async () => {
+    await loadGameModule(selectedGame);
     const color = document.getElementById('player-setup-color').value;
     const ai = parseInt(aiCount.value, 10);
-
-    // Set up single player state
-    const players = [
+    players = [
       { id: "human", username: "You", color: color }
     ];
     for (let i = 0; i < ai; i++) {
@@ -109,45 +107,15 @@ window.onload = () => {
         color: ["red", "blue", "green", "yellow", "purple", "orange"].filter(c => !players.some(p => p.color === c))[0] || "gray"
       });
     }
-    // Set all player positions to 0 (GO)
-    playerPositions = {};
-    players.forEach(p => playerPositions[p.id] = 0);
-
-    // Show the board and render it
-    showMenu(gameBoard);
-    renderBoard(players);
-    gameInfo.textContent = "Single player game started!";
+    showMenu(gameContainer);
+    currentGameModule.startSinglePlayer(gameContainer, players);
   };
 
   document.getElementById('player-setup-back').onclick = () => {
     showMenu(mainMenu);
   };
 
-  socket.on("hosted", (gameCode) => {
-    waitingGameCode.textContent = gameCode;
-    playerCountSpan.textContent = "1";
-    showMenu(waitingRoom);
-    startGameBtn.classList.remove('hidden');
-
-    // Set color to first available and emit
-    setFirstAvailableColor();
-  });
-
-  socket.on("joined", (gameCode) => {
-    waitingGameCode.textContent = gameCode;
-    showMenu(waitingRoom);
-    startGameBtn.classList.add('hidden');
-    isHost = false;
-
-    // Set color to first available and emit
-    setFirstAvailableColor();
-  });
-
-  socket.on("player-joined", (playerCount) => {
-    playerCountSpan.textContent = playerCount;
-  });
-
-  // When in waiting room, send color to server on change
+  // Multiplayer waiting room logic (player list, color, etc) stays here and is game-agnostic!
   playerColor.onchange = () => {
     if (waitingGameCode.textContent) {
       socket.emit("set-color", {
@@ -157,8 +125,27 @@ window.onload = () => {
     }
   };
 
-  // Display player list and lock taken colors
-  socket.on("player-list", (players) => {
+  socket.on("hosted", (gameCode) => {
+    waitingGameCode.textContent = gameCode;
+    playerCountSpan.textContent = "1";
+    showMenu(waitingRoom);
+    startGameBtn.classList.remove('hidden');
+    setFirstAvailableColor();
+  });
+
+  socket.on("joined", (gameCode) => {
+    waitingGameCode.textContent = gameCode;
+    showMenu(waitingRoom);
+    startGameBtn.classList.add('hidden');
+    setFirstAvailableColor();
+  });
+
+  socket.on("player-joined", (playerCount) => {
+    playerCountSpan.textContent = playerCount;
+  });
+
+  socket.on("player-list", (playersList) => {
+    players = playersList;
     playerListDiv.innerHTML = `
       <h3>Players:</h3>
       <ul>
@@ -172,114 +159,41 @@ window.onload = () => {
         ).join("")}
       </ul>
     `;
-
-    // Color locking: disable taken colors except for this player
+    // Color locking
     const myPlayer = players.find(p => p.id === socket.id);
     const myColor = myPlayer ? myPlayer.color : null;
     const takenColors = players
       .map(p => p.color)
       .filter(color => color && color !== myColor);
-
     Array.from(playerColor.options).forEach(option => {
       option.disabled = takenColors.includes(option.value);
     });
-
-    // Set dropdown to this player's color if not already set
     if (myColor && playerColor.value !== myColor) {
       playerColor.value = myColor;
     }
-
-    // Initialize player positions if not set
-    players.forEach(p => {
-      if (!(p.id in playerPositions)) {
-        playerPositions[p.id] = 0;
-      }
-    });
-
-    // Re-render board to show tokens
-    renderBoard(players);
   });
 
-  startGameBtn.onclick = () => {
-    console.log("Start Game clicked");
+  startGameBtn.onclick = async () => {
+    await loadGameModule(selectedGame);
+    showMenu(gameContainer);
+    currentGameModule.startMultiplayerGame(gameContainer, players, socket, waitingGameCode.textContent, socket.id);
     socket.emit("start-game", waitingGameCode.textContent);
   };
 
-  // Simple board squares for demo (replace with real Monopoly squares later)
-  const boardSquares = [
-    "GO", "Mediterranean Ave", "Community Chest", "Baltic Ave", "Income Tax", "Reading RR",
-    "Oriental Ave", "Chance", "Vermont Ave", "Connecticut Ave", "Jail",
-    // ...add more squares as needed...
-  ];
-
-  // Render the board as a grid
-  function renderBoard(players = []) {
-    boardContainer.innerHTML = "";
-    boardSquares.forEach((name, i) => {
-      const square = document.createElement("div");
-      square.textContent = name;
-      square.style.border = "1px solid #888";
-      square.style.width = "96px";
-      square.style.height = "96px";
-      square.style.display = "flex";
-      square.style.flexDirection = "column";
-      square.style.alignItems = "center";
-      square.style.justifyContent = "center";
-      square.style.fontSize = "12px";
-      square.style.background = i === 0 ? "#ffd" : "#fff";
-
-      // Add player tokens for this square
-      const tokensHere = players.filter(p => playerPositions[p.id] === i);
-      tokensHere.forEach(p => {
-        const token = document.createElement("div");
-        token.title = p.username || "Player";
-        token.style.width = "24px";
-        token.style.height = "24px";
-        token.style.borderRadius = "50%";
-        token.style.background = p.color || "gray";
-        token.style.margin = "2px";
-        token.style.border = "2px solid #222";
-        square.appendChild(token);
-      });
-
-      boardContainer.appendChild(square);
-    });
-  }
-
-  // Show the board when the game starts
-  socket.on("game-started", () => {
-    showMenu(gameBoard);
-    renderBoard();
-    gameInfo.textContent = "Game started! (Player movement and turns coming soon)";
-
-    // Initialize all players at GO (index 0)
-    socket.emit("request-player-list", waitingGameCode.textContent);
-  });
-
-  // Leave game button
-  leaveGameBtn.onclick = () => {
+  waitingBackBtn.onclick = () => {
     showMenu(mainMenu);
-    // Optionally: notify server to leave game
   };
-
-  socket.on("error", (msg) => {
-    alert(msg);
-  });
 
   // Helper function to set first available color
   function setFirstAvailableColor() {
-    // Wait for player-list event to get current taken colors
     socket.once("player-list", (players) => {
       const myPlayer = players.find(p => p.id === socket.id);
       const myColor = myPlayer ? myPlayer.color : null;
       const takenColors = players
         .map(p => p.color)
         .filter(color => color && color !== myColor);
-
-      // Find first available color
       const colorOptions = Array.from(playerColor.options).map(opt => opt.value);
       const firstAvailable = colorOptions.find(c => !takenColors.includes(c)) || colorOptions[0];
-
       if (playerColor.value !== firstAvailable) {
         playerColor.value = firstAvailable;
         socket.emit("set-color", {
@@ -288,5 +202,11 @@ window.onload = () => {
         });
       }
     });
+  }
+
+  // Dynamically load the selected game module
+  async function loadGameModule(gameKey) {
+    if (currentGameModule && currentGameModule.key === gameKey) return;
+    currentGameModule = require(`./games/${gameKey}/${gameKey}.js`);
   }
 };

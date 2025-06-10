@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Mega Monopoly</title>
+  <style>
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <div id="main-menu">
+    <h1>Mega Monopoly</h1>
+    <button id="single-player">Single Player</button>
+    <button id="multi-player">Multiplayer</button>
+  </div>
+  <div id="multiplayer-menu" class="hidden">
+    <h2>Multiplayer</h2>
+    <label>
+      Username:
+      <input id="player-username" maxlength="16" placeholder="Enter your name" />
+    </label>
+    <br>
+    <button id="host-game">Host Game</button>
+    <button id="join-game">Join Game</button>
+    <button id="back-main">Back</button>
+  </div>
+  <div id="host-menu" class="hidden">
+    <h2>Host Game</h2>
+    <p>Your game code: <span id="game-code"></span></p>
+    <button id="host-back">Back</button>
+  </div>
+  <div id="join-menu" class="hidden">
+    <h2>Join Game</h2>
+    <input id="join-code" placeholder="Enter game code" />
+    <button id="join-confirm">Join</button>
+    <button id="join-back">Back</button>
+  </div>
+  <div id="player-setup-menu" class="hidden">
+    <h2>Player Setup</h2>
+    <label>
+      Choose your color:
+      <select id="player-setup-color">
+        <option value="red">Red</option>
+        <option value="blue">Blue</option>
+        <option value="green">Green</option>
+        <option value="yellow">Yellow</option>
+        <option value="purple">Purple</option>
+        <option value="orange">Orange</option>
+      </select>
+    </label>
+    <br><br>
+    <label>
+      Number of AI players:
+      <input id="ai-count" type="number" min="0" max="5" value="0" />
+    </label>
+    <br><br>
+    <button id="player-setup-confirm">Start Game</button>
+    <button id="player-setup-back">Back</button>
+  </div>
+  <div id="waiting-room" class="hidden">
+    <h2>Waiting Room</h2>
+    <p>Game code: <span id="waiting-game-code"></span></p>
+    <p>Players connected: <span id="player-count">1</span></p>
+    <label>
+      Choose your color:
+      <select id="player-color">
+        <option value="red">Red</option>
+        <option value="blue">Blue</option>
+        <option value="green">Green</option>
+        <option value="yellow">Yellow</option>
+        <option value="purple">Purple</option>
+        <option value="orange">Orange</option>
+      </select>
+    </label>
+    <div id="player-list" style="background:#eee; padding:10px; margin-top:10px;"></div>
+    <button id="start-game" class="hidden">Start Game</button>
+    <button id="waiting-back">Back to Menu</button>
+  </div>
+  <div id="game-board" class="hidden">
+    <h2>Monopoly Game Board</h2>
+    <div id="board-container" style="display: flex; flex-wrap: wrap; width: 480px; height: 480px; border: 2px solid #333; margin-bottom: 20px;">
+      <!-- Squares will be rendered here -->
+    </div>
+    <div id="game-info"></div>
+    <button id="leave-game">Leave Game</button>
+  </div>
+  <script src="renderer.js"></script>
+</body>
+</html>

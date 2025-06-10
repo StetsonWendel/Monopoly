@@ -1,0 +1,27 @@
+{
+  "name": "monopoly",
+  "version": "1.0.0",
+  "description": "Building the game of Monopoly.",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/StetsonWendel/Monopoly.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/StetsonWendel/Monopoly/issues"
+  },
+  "homepage": "https://github.com/StetsonWendel/Monopoly#readme",
+  "devDependencies": {
+    "electron": "^36.4.0"
+  },
+  "dependencies": {
+    "socket.io": "^4.8.1",
+    "socket.io-client": "^4.8.1"
+  }
+}

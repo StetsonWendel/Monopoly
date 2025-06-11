@@ -36,7 +36,7 @@ window.onload = () => {
   };
 
   document.getElementById('single-player').onclick = async () => {
-    await loadGameModule(selectedGame);
+    await loadGameModule(selectedGame, "single");
     showMenu(playerSetupMenu);
   };
 
@@ -202,13 +202,17 @@ window.onload = () => {
   }
 
   // Dynamically load the selected game module
-  async function loadGameModule(gameKey) {
-    if (currentGameModule && currentGameModule.key === gameKey) return;
-    currentGameModule = require(`./games/${gameKey}/${gameKey}.js`);
+  async function loadGameModule(gameKey, mode = "single") {
+    if (currentGameModule && currentGameModule.key === gameKey + (mode === "single" ? "-single-player" : "-multiplayer")) return;
+    if (mode === "single") {
+      currentGameModule = require(`./games/${gameKey}/monopoly-single-player.js`);
+    } else {
+      currentGameModule = require(`./games/${gameKey}/monopoly-multiplayer.js`);
+    }
   }
 
   socket.on("game-started", async () => {
-    await loadGameModule(selectedGame);
+    await loadGameModule(selectedGame, "multi");
     showMenu(gameContainer);
     currentGameModule.startMultiplayerGame(
       gameContainer,

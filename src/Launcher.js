@@ -1,3 +1,4 @@
+const MonopolySyncClient = require("./games/mega-monopoly/MonopolySyncClient");
 const { io } = require("socket.io-client");
 const socket = io("http://localhost:3000");
 
@@ -193,11 +194,20 @@ class Launcher {
 
         socket.on("game-started", () => {
             this.showMenu(this.gameContainer);
-            // Use the class directly
+
+            // Create the sync client for this game
+            const syncClient = new MonopolySyncClient(
+                "http://localhost:3000", // or your server URL
+                this.waitingGameCode.textContent,
+                this.players.map(p => p.id),
+                /* boardLength */ 40, // or whatever your board length is
+                /* propertyCount */ 28 // or however many properties you have
+            );
+
             this.currentGameInstance = new MultiplayerGame(
                 this.gameContainer,
                 this.players,
-                socket,
+                syncClient,
                 this.waitingGameCode.textContent,
                 socket.id
             );

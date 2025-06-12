@@ -8,7 +8,7 @@ class BoardSpace {
         this.renderBackground();
         // this.imgSrc = img; // Image to display on the space (optional)
         // cell.style.background = "#f5fde8"; // This line is not valid here; cell is undefined in constructor
-        this.onLand = () => {}; // Function to call when a player lands on this space (can be overridden)
+        
     }
 
     populateCell() {
@@ -69,6 +69,7 @@ class BoardSpace {
      */
     onLand(player) {
         // Default: do nothing
+        console.log("Error: BoardSpace onLand called for", this.name);
     }
 }
 

@@ -1,14 +1,14 @@
 const BoardSpace = require('../BoardSpace');
 
 class BuyableSpace extends BoardSpace {
-    constructor({ pos, name, edge, price, img, colorGroup, cell, backgroundColor = "#fffbe6", realestateType }) {
+    constructor({ pos, name, edge, price, img, colorGroup, cell, backgroundColor = "#fffbe6", realEstateType }) {
         super({ pos, name, edge, img, cell, backgroundColor });
         this.price = price;
         this.owner = null;
         this.mortgageValue = price / 2;
         this.isMortgaged = false;
         this.colorGroup = colorGroup;
-        this.type = realestateType;
+        this.realEstateType = realEstateType; // <-- Use this property
         if (this.cell) {
             this.cell.onclick = () => this.renderDeed();
         }
@@ -58,7 +58,7 @@ class BuyableSpace extends BoardSpace {
     }
 
     renderDeed() {
-        
+
     }
 
     baseRenderDeed(fillHTML) {
@@ -77,6 +77,7 @@ class BuyableSpace extends BoardSpace {
     buy(player) {
         player.money -= this.price;
         this.owner = player;
+        player.addRealEstate(this); // Add to player's owned list
         return true;
     }
 
@@ -90,6 +91,7 @@ class BuyableSpace extends BoardSpace {
     }
 
     onLand(player) {
+        // console.log("BuyableSpace onLand called for", this.name);
         if (!this.owner) {
             this.offerPurchase(player);
         } else if (this.owner !== player) {

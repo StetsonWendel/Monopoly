@@ -13,20 +13,18 @@ const BusTicketSpace = require('./BoardSpaceHierarchy/Default/BusTicketSpace');
 const TaxSpace = require('./BoardSpaceHierarchy/Default/TaxSpace');
 const BoardSpace = require('./BoardSpace');
 const boardData = require('./monopoly-board-data.json');
-// const getBoardPositions = require('./getBoardPositions'); // Make sure this exists and is exported
+
 
 
 class MonopolyGame {
   constructor(players) {
     this.players = players;
     this.currentTurn = 0;
-    this.playerPositions = {};
-    players.forEach(p => this.playerPositions[p.id] = 0);
     this.board = this.renderBoard();
   }
 
   createBoardObjects(boardData, positions, cells, size) {
-    console.log("boardData length:", boardData.length, "positions length:", positions.length);
+    // console.log("boardData length:", boardData.length, "positions length:", positions.length);
     return boardData.map((sq, idx) => {
       const pos = positions[idx];
       if (!pos) {
@@ -56,7 +54,8 @@ class MonopolyGame {
             rentArray: sq.rent,
             colorGroup: sq.color,
             buildingCost: sq.buildingCost,
-            cell
+            cell,
+            realEstateType: "property" 
           });
         case "railroad":
           return new RailroadSpace({
@@ -64,7 +63,8 @@ class MonopolyGame {
             name: sq.name,
             edge,
             price: sq.price,
-            cell
+            cell,
+            realEstateType: "railroad" 
           });
         case "utility":
           return new UtilitySpace({
@@ -72,7 +72,8 @@ class MonopolyGame {
             name: sq.name,
             edge,
             price: sq.price,
-            cell
+            cell,
+            realEstateType: "utility" 
           });
         case "chance":
           return new ChanceSpace({ pos: idx, edge, cell });
@@ -104,18 +105,24 @@ class MonopolyGame {
   }
 
   rollDice() {
+    let megaDie = Math.ceil(Math.random() * 6)
+    if (megaDie >= 0) {
+      megaDie = "mrMonopoly";
+    } else if (mega == 4) {
+      megaDie = "busTicket";
+    }
+
     return {
       d1: Math.ceil(Math.random() * 6),
       d2: Math.ceil(Math.random() * 6),
-      mega: Math.ceil(Math.random() * 12)
+      mega: megaDie
     };
   }
 
-  movePlayer(playerId, steps) {
-    const oldPos = this.playerPositions[playerId];
-    const newPos = (oldPos + steps) % this.board.length;
-    this.playerPositions[playerId] = newPos;
-    return this.board[newPos];
+  movePlayer(player, steps) {
+    player.position = (player.position + steps) % this.board.length;
+    this.renderPlayerTokens();
+    return this.board[player.position];
   }
 
   renderBoard() {
@@ -125,8 +132,7 @@ class MonopolyGame {
     const container = document.getElementById("game-container");
 
     container.innerHTML = `
-      <!-- Player bank/status area -->
-      <div id="mm-players" style="position:fixed;left:32px;bottom:32px;z-index:2000;display:flex;flex-direction:column;align-items:flex-start;gap:8px;background:rgba(255,255,255,0.85);padding:12px 18px;border-radius:10px;box-shadow:0 2px 12px #0002;min-width:160px;"></div>
+
       <!-- The board grid itself -->
       <div id="mm-board" style="display: grid;grid-template-columns: repeat(${size}, 1fr);grid-template-rows: repeat(${size}, 1fr);width: ${boardPx}px;height: ${boardPx}px;border: 2px solid #222;margin-bottom: 20px;background: #fff;"></div>
       <!-- Board title overlay -->
@@ -140,10 +146,6 @@ class MonopolyGame {
       <!-- Roll dice button -->
       <button id="mm-roll">Roll Dice</button>
       <!-- End turn and back buttons -->
-      <div id="mm-bottom-buttons" style="position:fixed;right:32px;bottom:32px;z-index:2000;display:flex;flex-direction:column;gap:12px;">
-        <button id="mm-end-turn" style="min-width:120px;">End Turn</button>
-        <button id="mm-back" style="min-width:120px;">Back to Menu</button>
-      </div>
       <!-- Property deed modal -->
       <div id="property-modal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.4); align-items:center; justify-content:center; z-index:1000;">
         <div id="property-modal-content" style="background:#fff; border-radius:8px; box-shadow:0 4px 32px #0008; padding:0; min-width:340px; min-height:420px; position:relative;">
@@ -157,6 +159,13 @@ class MonopolyGame {
           <div id="buy-property-title" style="font-size:1.3em; font-weight:bold; margin-bottom:18px;"></div>
           <button id="buy-property-confirm" style="margin:0 12px; min-width:80px;">Buy</button>
           <button id="buy-property-cancel" style="margin:0 12px; min-width:80px;">Cancel</button>
+        </div>
+      </div>
+      <div id="turn-modal" style="display:none; position:fixed; left:0; top:0; width:100vw; height:100vh; background:rgba(0,0,0,0.4); align-items:center; justify-content:center; z-index:4000;">
+        <div style="background:#fffbe6; border-radius:12px; box-shadow:0 4px 32px #0008; padding:32px 28px; min-width:320px; min-height:120px; position:relative; text-align:center;">
+          <div id="turn-modal-title" style="font-size:1.2em; font-weight:bold; margin-bottom:18px;"></div>
+          <button id="turn-modal-roll" style="margin:0 12px; min-width:80px;">Roll Dice</button>
+          <button id="turn-modal-bus" style="margin:0 12px; min-width:120px; display:none;">Use Bus Ticket</button>
         </div>
       </div>
   
@@ -200,31 +209,80 @@ class MonopolyGame {
       }
     });
 
+    this.renderPlayerTokens();
     return this.board;
   }
 
   getBoardPositions(size) {
-    // Example: returns edge positions for a square board
     const positions = [];
-    for (let i = 0; i < size; i++) positions.push({ row: 0, col: i }); // Top
-    for (let i = 1; i < size; i++) positions.push({ row: i, col: size - 1 }); // Right
-    for (let i = size - 2; i >= 0; i--) positions.push({ row: size - 1, col: i }); // Bottom
-    for (let i = size - 2; i > 0; i--) positions.push({ row: i, col: 0 }); // Left
-
-    const seen = new Set();
-    positions.forEach((pos, idx) => {
-      const key = `${pos.row},${pos.col}`;
-      if (seen.has(key)) {
-        console.warn(`Duplicate cell position at idx=${idx}:`, pos);
-      }
-      seen.add(key);
-      if (pos.row < 0 || pos.row >= size || pos.col < 0 || pos.col >= size) {
-        console.warn(`Out-of-bounds position at idx=${idx}:`, pos);
-      }
-    });
-
+    // Top row (left to right)
+    for (let i = 0; i < size; i++) positions.push({ row: 0, col: i });
+    // Right column (top to bottom, skipping top)
+    for (let i = 1; i < size; i++) positions.push({ row: i, col: size - 1 });
+    // Bottom row (right to left, skipping rightmost)
+    for (let i = size - 2; i >= 0; i--) positions.push({ row: size - 1, col: i });
+    // Left column (bottom to top, skipping bottom and top)
+    for (let i = size - 2; i > 0; i--) positions.push({ row: i, col: 0 });
     return positions;
   };
+
+  renderPlayerTokens() {
+    // Remove all existing tokens
+    document.querySelectorAll('.mm-player-token').forEach(el => el.remove());
+
+    const size = 14; // Make sure this matches your board size
+    const positions = this.getBoardPositions(size);
+    const cells = Array.from(document.querySelectorAll('#mm-board > div'));
+
+    this.players.forEach(player => {
+        const pos = player.position;
+        const boardPos = positions[pos];
+        if (!boardPos) return;
+        const cellIdx = boardPos.row * size + boardPos.col;
+        const cell = cells[cellIdx];
+        if (!cell) return;
+
+        // Create token element
+        const token = document.createElement('div');
+        token.className = 'mm-player-token';
+        token.title = player.username;
+        token.style.width = '32px';
+        token.style.height = '32px';
+        token.style.borderRadius = '50%';
+        token.style.background = player.color || '#444';
+        token.style.border = '2px solid #fff';
+        token.style.display = 'flex';
+        token.style.alignItems = 'center';
+        token.style.justifyContent = 'center';
+        token.style.position = 'absolute';
+        token.style.bottom = '6px';
+        token.style.left = '6px';
+        token.style.zIndex = '10';
+        token.style.fontWeight = 'bold';
+        token.style.color = '#fff';
+        token.style.fontSize = '1.1em';
+        token.innerText = player.username[0] || '?';
+
+        cell.appendChild(token);
+    });
+}
+
+findNextUnownedProperty(fromPos) {
+    const boardLen = this.board.length;
+    for (let i = 1; i < boardLen; i++) {
+        const idx = (fromPos + i) % boardLen;
+        const space = this.board[idx];
+        if (
+            (space.realEstateType === "property" ||
+             space.realEstateType === "railroad" ||
+             space.realEstateType === "utility") &&
+            (!space.owner || space.owner === "unowned" || space.owner === "bank")
+        ) {
+            return idx;
+        }
+    }
+    return null; // No unowned property found
+}
 }
 
 module.exports = MonopolyGame;

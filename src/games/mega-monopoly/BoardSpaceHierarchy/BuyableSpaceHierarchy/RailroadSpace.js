@@ -1,8 +1,8 @@
 const BuyableSpace = require('../BuyableSpace');
 
 class RailroadSpace extends BuyableSpace {
-    constructor({ pos, name, edge, price, cell, colorGroup = "black" }) {
-        super({ pos, name, edge, cell, price, colorGroup, realEstateType: "railroad" });
+    constructor({ pos, name, edge, price, cell, colorGroup = "black", realEstateType = "railroad" }) {
+        super({ pos, name, edge, cell, price, colorGroup, realEstateType });
         this.hasDepot = false; // Track if a depot has been built;
     }
 

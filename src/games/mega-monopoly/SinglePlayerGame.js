@@ -1,78 +1,146 @@
 const MonopolyGame = require('./MonopolyGame');
-const { GameEngine } = require('../game-engine');
+const { GameEngine } = require('../GameEngine');
+const Player = require('./Player'); // <-- Add this line
+const FixedUIScreen = require('./FixedUIScreen');
 
 class SinglePlayerGame {
     constructor(container, playersInfo) {
         this.container = container;
-        this.players = playersInfo.map(p => ({
-            ...p,
-            bank: typeof p.bank === "number" ? p.bank : 1500
-        }));
-
-        // Create the MonopolyGame instance (handles board, positions, etc.)
+        this.whosTurn = 0;
+        this.players = playersInfo.map(p => new Player(p));
         this.monopolyGame = new MonopolyGame(this.players);
-
-        // Create the game engine instance with the board and players
         this.engine = new GameEngine(this.monopolyGame.board, this.players);
 
-        // Initialize player positions if not already present
-        if (!this.engine.playerPositions) {
-            this.engine.playerPositions = {};
-            this.players.forEach(p => { this.engine.playerPositions[String(p.id)] = 0; });
-        }
-
-        // Set the first player as the current turn
         this.engine.currentTurn = 0;
 
-        // Initial render and event handlers
-        this.render();
+        // Set all player positions to 0 at start
+        this.players.forEach(p => { p.position = 0; });
+
+        // Only render the board ONCE here!
+        this.monopolyGame.renderBoard();
+
+        // Create the fixed UI ONCE
+        this.fixedUI = new FixedUIScreen(this.container, {
+            onEndTurn: () => this.endTurn(),
+            onQuit: () => { window.location.reload(); },
+            onTrade: () => { /* trade logic */ },
+            onSave: () => { /* save game logic */ },
+            onViewRealEstate: () => { /* show real estate modal */ }
+        });
+
+        // Attach handlers ONCE
         this.attachHandlers();
+
+        // Optionally, render other info
+        this.render();
+
+        this.fixedUI.updatePlayerInfo(this.players, this.whosTurn);
+    }
+
+    endTurn() {
+        this.whosTurn = (this.whosTurn + 1) % this.players.length;
+        this.engine.currentTurn++;
+        this.render();
+        this.startTurn();
     }
 
     attachHandlers() {
         const infoDiv = this.container.querySelector("#mm-info");
 
-        // Handle rolling the dice
         this.container.querySelector("#mm-roll").onclick = () => {
-            const player = this.players[this.engine.currentTurn];
+            const player = this.players[this.whosTurn];
             const roll = this.monopolyGame.rollDice();
             const total = roll.d1 + roll.d2;
 
-            // Move the player token forward by the dice total
-            this.engine.playerPositions[String(player.id)] =
-                (this.engine.playerPositions[String(player.id)] + total) % this.monopolyGame.board.length;
+            // Move player using MonopolyGame's method
+            const landedSquare = this.monopolyGame.movePlayer(player, total);
 
-            // Show info about the roll and new position
-            infoDiv.innerHTML = `${player.username} rolled ${roll.d1} + ${roll.d2} (Mega: ${roll.mega}) and moved to ${this.monopolyGame.board[this.engine.playerPositions[player.id]].name}`;
+            infoDiv.innerHTML = `${player.username} rolled ${roll.d1} + ${roll.d2} (Mega: ${roll.mega}) and moved to ${landedSquare.name}`;
 
-            // Get the square the player landed on
-            const landedSquare = this.monopolyGame.board[this.engine.playerPositions[player.id]];
-
-            // If it's an unowned property, show the buy property modal
-            if (
-                landedSquare.type === "property" &&
-                (!landedSquare.owner || landedSquare.owner === "unowned" || landedSquare.owner === "bank")
-            ) {
-                // showBuyPropertyModal(landedSquare, player); // Implement this as needed
-            } else {
-                // Otherwise, just re-render the board
-                this.render();
-            }
+            // if (typeof landedSquare.onLand === "function") {
+            //     landedSquare.onLand(player);
+            // }
         };
-
-        // Handle ending the turn (move to next player)
-        this.container.querySelector("#mm-end-turn").onclick = () => {
-            this.engine.currentTurn = (this.engine.currentTurn + 1) % this.players.length;
-            this.render();
-        };
-
-        // Handle going back to the menu (reloads the page)
-        this.container.querySelector("#mm-back").onclick = () => window.location.reload();
     }
 
     render() {
-        this.monopolyGame.renderBoard();
-        // You can add renderPlayerTokens, renderFixedUI, etc. here if needed
+        // Just update info displays, etc.
+        this.monopolyGame.renderPlayerTokens();
+        this.fixedUI.updatePlayerInfo(this.players, this.whosTurn);
+    }
+
+    startTurn() {
+        const player = this.players[this.whosTurn];
+        const modal = document.getElementById("turn-modal");
+        const title = document.getElementById("turn-modal-title");
+        const rollBtn = document.getElementById("turn-modal-roll");
+        const busBtn = document.getElementById("turn-modal-bus");
+
+        title.textContent = `${player.username}, it's your turn!`;
+        rollBtn.style.display = "inline-block";
+        busBtn.style.display = player.numBustickets > 0 ? "inline-block" : "none";
+
+        modal.style.display = "flex";
+
+        // Remove previous handlers
+        rollBtn.onclick = null;
+        busBtn.onclick = null;
+
+        rollBtn.onclick = () => {
+            modal.style.display = "none";
+            this.rollDiceAndMove();
+        };
+        busBtn.onclick = () => {
+            modal.style.display = "none";
+            this.useBusTicket();
+        };
+    }
+
+    rollDiceAndMove() {
+        const player = this.players[this.whosTurn];
+        const roll = this.monopolyGame.rollDice();
+        let d3 = 0;
+        if (typeof roll.mega === "number") {
+            d3 = roll.mega;
+        }
+        const total = roll.d1 + roll.d2 + d3;
+
+        // Move player using MonopolyGame's method
+        const landedSquare = this.monopolyGame.movePlayer(player, total);
+
+        this.render();
+
+        // Update info
+        const infoDiv = this.container.querySelector("#mm-info");
+        infoDiv.innerHTML = `${player.username} rolled ${roll.d1} + ${roll.d2} (Mega: ${roll.mega}) and moved to ${landedSquare.name}`;
+
+        // Call onLand
+        if (typeof landedSquare.onLand === "function") {
+            landedSquare.onLand(player);
+        }
+
+        // Mr. Monopoly logic
+        if (roll.mega === "mrMonopoly") {
+            const nextUnownedIdx = this.monopolyGame.findNextUnownedProperty(player.position);
+            if (nextUnownedIdx !== null) {
+                this.monopolyGame.movePlayer(player, (nextUnownedIdx - player.position + this.monopolyGame.board.length) % this.monopolyGame.board.length);
+                const nextSpace = this.monopolyGame.board[player.position];
+                this.render();
+                infoDiv.innerHTML += `<br>${player.username} is moved by Mr. Monopoly to ${nextSpace.name}!`;
+                if (typeof nextSpace.onLand === "function") {
+                    nextSpace.onLand(player);
+                }
+            }
+        }
+    }
+
+    useBusTicket() {
+        const player = this.players[this.whosTurn];
+        player.numBustickets--;
+        // Implement bus ticket logic here (e.g., let player choose destination)
+        alert(`${player.username} used a bus ticket! (Implement destination selection logic)`);
+        // After using, call onLand for the chosen space
+        // this.monopolyGame.board[newPosition].onLand(player);
     }
 }
 

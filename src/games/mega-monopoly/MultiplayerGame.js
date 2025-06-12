@@ -1,5 +1,5 @@
 const MonopolyGame = require('./MonopolyGame');
-const { GameEngine } = require('../game-engine');
+const { GameEngine } = require('../GameEngine');
 const boardData = require('./monopoly-board-data.json');
 
 class MultiplayerGame {

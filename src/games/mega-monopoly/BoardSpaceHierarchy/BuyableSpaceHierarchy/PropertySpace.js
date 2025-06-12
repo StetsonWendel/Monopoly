@@ -2,7 +2,7 @@ const BuyableSpace = require('../BuyableSpace');
 
 class PropertySpace extends BuyableSpace {
     constructor({ pos, name, edge, price, rentArray, colorGroup, buildingCost, cell }) {
-        super({ pos, name, edge, price, img: null, colorGroup, cell });
+        super({ pos, name, edge, price, img: null, colorGroup, cell, realEstateType: "property" });
         this.rentArray = rentArray;
         this.houses = 0;
         this.hasHotel = false;

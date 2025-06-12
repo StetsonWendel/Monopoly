@@ -2,7 +2,7 @@ const BuyableSpace = require('../BuyableSpace');
 
 class UtilitySpace extends BuyableSpace {
     constructor({ pos, name, edge, price, cell, colorGroup = "lightgreen" }) {
-        super({ pos, name, edge, cell, price, colorGroup });
+        super({ pos, name, edge, cell, price, colorGroup, realEstateType: "utility" });
     }
 
     // Rent is 4x dice roll if one utility owned, 10x if both owned by same player

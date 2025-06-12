@@ -1,13 +1,14 @@
 const BoardSpace = require('../BoardSpace');
 
 class BuyableSpace extends BoardSpace {
-    constructor({ pos, name, edge, price, img, colorGroup, cell, backgroundColor = "#fffbe6"}) {
+    constructor({ pos, name, edge, price, img, colorGroup, cell, backgroundColor = "#fffbe6", realestateType }) {
         super({ pos, name, edge, img, cell, backgroundColor });
         this.price = price;
         this.owner = null;
         this.mortgageValue = price / 2;
         this.isMortgaged = false;
         this.colorGroup = colorGroup;
+        this.type = realestateType;
         if (this.cell) {
             this.cell.onclick = () => this.renderDeed();
         }

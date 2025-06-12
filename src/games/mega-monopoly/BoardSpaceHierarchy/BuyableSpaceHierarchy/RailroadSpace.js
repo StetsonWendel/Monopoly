@@ -2,7 +2,7 @@ const BuyableSpace = require('../BuyableSpace');
 
 class RailroadSpace extends BuyableSpace {
     constructor({ pos, name, edge, price, cell, colorGroup = "black" }) {
-        super({ pos, name, edge, cell, price, colorGroup});
+        super({ pos, name, edge, cell, price, colorGroup, realEstateType: "railroad" });
         this.hasDepot = false; // Track if a depot has been built;
     }
 
@@ -10,14 +10,14 @@ class RailroadSpace extends BuyableSpace {
     calculateRent() {
         if (!this.owner || typeof this.owner.countRailroads !== "function") return 25;
         const numOwned = this.owner.countRailroads();
-        if (this.hasDepot) depotDouble = 2; // If depot is built, rent is doubled
-        else depotDouble = 1;
+        if (this.hasDepot) depotDouble = 2; else depotDouble = 1;
         return 25 * Math.pow(2, Math.max(0, numOwned - 1)) * depotDouble;
     }
 
     renderDeed() {
         this.baseRenderDeed(this.getDeedFillHTML());
     }
+
     getDeedFillHTML(){
         return `
         <div style="font-family:monospace,Arial,sans-serif; width:340px; min-height:220px; background:#fffbe6; border-radius:8px; overflow:hidden;">

@@ -138,23 +138,25 @@ function renderBoard(container, engine, players, board = gameBoard) {
     else if (col === size - 1) edge = "left";
     else if (row === size - 1) edge = "bottom";
     else if (col === 0) edge = "right";
+    
 
-    // Stick names in spaces. Used as the base by all spaces.
-    const nameDiv = document.createElement("div");
-    nameDiv.textContent = square.name;
-    nameDiv.style.textAlign = "center";
-    nameDiv.style.flex = "1";
-    nameDiv.style.display = "flex";
-    nameDiv.style.alignItems = "center";
-    nameDiv.style.justifyContent = "center";
-    nameDiv.style.width = "90%";
-    nameDiv.style.fontWeight = "bold";
-    nameDiv.style.zIndex = "1";
-    nameDiv.style.fontSize = "1.5em";
-    nameDiv.style.marginTop = "-35%";
-    if (edge === "left") nameDiv.style.marginLeft = "45px";
-    if (edge === "right") nameDiv.style.marginRight = "45px";
-    cell.appendChild(nameDiv);
+    // Method of BoardSpace.
+    // // Stick names in spaces. Used as the base by all spaces.
+    // const nameDiv = document.createElement("div");
+    // nameDiv.textContent = square.name;
+    // nameDiv.style.textAlign = "center";
+    // nameDiv.style.flex = "1";
+    // nameDiv.style.display = "flex";
+    // nameDiv.style.alignItems = "center";
+    // nameDiv.style.justifyContent = "center";
+    // nameDiv.style.width = "90%";
+    // nameDiv.style.fontWeight = "bold";
+    // nameDiv.style.zIndex = "1";
+    // nameDiv.style.fontSize = "1.5em";
+    // nameDiv.style.marginTop = "-35%";
+    // if (edge === "left") nameDiv.style.marginLeft = "45px";
+    // if (edge === "right") nameDiv.style.marginRight = "45px";
+    // cell.appendChild(nameDiv);
 
     // Initiate variable to define in switch case for our special squares.
     let imgSrc = null;

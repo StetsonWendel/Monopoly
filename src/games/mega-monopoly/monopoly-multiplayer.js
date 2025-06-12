@@ -1,4 +1,4 @@
-const { renderBoard } = require('./monopoly-base');
+const { renderBoard } = require('./MonopolyGame');
 const { MonopolyNetwork } = require('./monopoly-client');
 const { GameEngine } = require('../game-engine');
 const baseMegaBoard = require('./monopoly-board-data.json');

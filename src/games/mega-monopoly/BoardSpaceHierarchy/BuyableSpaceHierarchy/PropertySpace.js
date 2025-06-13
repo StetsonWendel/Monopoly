@@ -52,6 +52,12 @@ class PropertySpace extends BuyableSpace {
         `;
     }
 
+
+
+
+
+
+
     // Untouched method to handle the purchase of this property by a player
     develop() {
         if (this.hasHotel) return false;
@@ -68,6 +74,13 @@ class PropertySpace extends BuyableSpace {
     }
 
 
+
+
+
+
+
+
+    
     // Untouched Method made to render upgrades on the board.
     renderDevelopment() {
         // Optional: Display house/hotel count on board

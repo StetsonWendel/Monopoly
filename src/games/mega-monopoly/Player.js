@@ -10,6 +10,8 @@ class Player {
         this.isHuman = isHuman;
         this.position = 0;
         this.numBustickets = 0;
+        this.inJail = false; 
+        this.hasGetOutOfJailFree = false; 
     }
 
     countRailroads() {

@@ -16,11 +16,8 @@ class ChanceSpace extends BoardSpace {
 
     // Called when a player lands on this space
     onLand(player, game) {
-        // Draw a chance card and apply its effect
-        if (game && typeof game.drawChanceCard === "function") {
-            game.drawChanceCard(player);
-        } else {
-            console.log(`${player.name} landed on Chance, but no card logic is implemented.`);
+        if (game.logic && typeof game.logic.drawChanceCard === "function") {
+            game.logic.drawChanceCard(player, game);
         }
     }
 }

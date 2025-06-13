@@ -1,23 +1,31 @@
-const MonopolyGame = require('./MonopolyGame');
+const RenderMonopolyGame = require('./RenderMonopolyGame');
+const MonopolyBaseLogic = require('./MonopolyBaseLogic');
 const { GameEngine } = require('../GameEngine');
-const Player = require('./Player'); // <-- Add this line
+const Player = require('./Player');
 const FixedUIScreen = require('./FixedUIScreen');
+const Deck = require('./Deck');
+const chanceCards = require('./chance-cards');
+const communityChestCards = require('./community-chest-cards');
+const busTicketCards = require('./bus-ticket-cards');
 
 class SinglePlayerGame {
-    constructor(container, playersInfo) {
+    constructor(container, playersInfo, boardData) { // <-- add boardData param
         this.container = container;
         this.whosTurn = 0;
         this.players = playersInfo.map(p => new Player(p));
-        this.monopolyGame = new MonopolyGame(this.players);
-        this.engine = new GameEngine(this.monopolyGame.board, this.players);
 
+        // Rendering and board creation
+        this.renderGame = new RenderMonopolyGame(this.players);
+        this.board = this.renderGame.renderBoard(boardData); // <-- pass boardData here
+
+        // Game logic
+        this.logic = new MonopolyBaseLogic(this.players, this.board);
+
+        this.engine = new GameEngine(this.board, this.players);
         this.engine.currentTurn = 0;
 
         // Set all player positions to 0 at start
         this.players.forEach(p => { p.position = 0; });
-
-        // Only render the board ONCE here!
-        this.monopolyGame.renderBoard();
 
         // Create the fixed UI ONCE
         this.fixedUI = new FixedUIScreen(this.container, {
@@ -28,13 +36,26 @@ class SinglePlayerGame {
             onViewRealEstate: () => { /* show real estate modal */ }
         });
 
-        // Attach handlers ONCE
-        this.attachHandlers();
-
         // Optionally, render other info
         this.render();
 
         this.fixedUI.updatePlayerInfo(this.players, this.whosTurn);
+
+        // Initialize decks
+        this.chanceDeck = new Deck(chanceCards);
+        this.communityChestDeck = new Deck(communityChestCards);
+        this.busTicketDeck = new Deck(busTicketCards);
+
+        // Pass the decks to MonopolyBaseLogic
+        this.logic = new MonopolyBaseLogic(
+            this.players,
+            this.board,
+            this.chanceDeck,
+            this.communityChestDeck,
+            this.busTicketDeck
+        );
+
+        this.debugMode = false; // Set to true to enable debug mode
     }
 
     endTurn() {
@@ -44,28 +65,9 @@ class SinglePlayerGame {
         this.startTurn();
     }
 
-    attachHandlers() {
-        const infoDiv = this.container.querySelector("#mm-info");
-
-        this.container.querySelector("#mm-roll").onclick = () => {
-            const player = this.players[this.whosTurn];
-            const roll = this.monopolyGame.rollDice();
-            const total = roll.d1 + roll.d2;
-
-            // Move player using MonopolyGame's method
-            const landedSquare = this.monopolyGame.movePlayer(player, total);
-
-            infoDiv.innerHTML = `${player.username} rolled ${roll.d1} + ${roll.d2} (Mega: ${roll.mega}) and moved to ${landedSquare.name}`;
-
-            // if (typeof landedSquare.onLand === "function") {
-            //     landedSquare.onLand(player);
-            // }
-        };
-    }
-
     render() {
         // Just update info displays, etc.
-        this.monopolyGame.renderPlayerTokens();
+        this.renderGame.renderPlayerTokens();
         this.fixedUI.updatePlayerInfo(this.players, this.whosTurn);
     }
 
@@ -96,42 +98,70 @@ class SinglePlayerGame {
         };
     }
 
-    rollDiceAndMove() {
+    async rollDiceAndMove() {
         const player = this.players[this.whosTurn];
-        const roll = this.monopolyGame.rollDice();
+        
+        let roll;
+        if (this.debugMode) {
+            roll = await this.getDebugDiceValues();
+        } else {
+            roll = this.logic.rollDice();
+        }
+
         let d3 = 0;
         if (typeof roll.mega === "number") {
             d3 = roll.mega;
         }
         const total = roll.d1 + roll.d2 + d3;
 
-        // Move player using MonopolyGame's method
-        const landedSquare = this.monopolyGame.movePlayer(player, total);
+        // Check for triples (all dice equal and d3 is a number)
+        if (typeof roll.mega === "number" && roll.d1 === roll.d2 && roll.d2 === roll.mega) {
+            this.logic.chooseBoardPositionByClick(player, this.board, (landedSquare) => {
+                this.render();
+                if (typeof landedSquare.onLand === "function") {
+                    landedSquare.onLand(player, this);
+                }
+                // End turn after moving anywhere
+            });
+            return;
+        }
+
+        // Move player using MonopolyBaseLogic's method
+        const landedSquare = this.logic.movePlayer(player, total);
 
         this.render();
-
-        // Update info
-        const infoDiv = this.container.querySelector("#mm-info");
-        infoDiv.innerHTML = `${player.username} rolled ${roll.d1} + ${roll.d2} (Mega: ${roll.mega}) and moved to ${landedSquare.name}`;
-
+   
         // Call onLand
         if (typeof landedSquare.onLand === "function") {
-            landedSquare.onLand(player);
+            landedSquare.onLand(player, this);
         }
 
         // Mr. Monopoly logic
         if (roll.mega === "mrMonopoly") {
-            const nextUnownedIdx = this.monopolyGame.findNextUnownedProperty(player.position);
-            if (nextUnownedIdx !== null) {
-                this.monopolyGame.movePlayer(player, (nextUnownedIdx - player.position + this.monopolyGame.board.length) % this.monopolyGame.board.length);
-                const nextSpace = this.monopolyGame.board[player.position];
+            this.logic.moveMrMonopoly(player, this.board, (nextSpace) => {
                 this.render();
-                infoDiv.innerHTML += `<br>${player.username} is moved by Mr. Monopoly to ${nextSpace.name}!`;
+
                 if (typeof nextSpace.onLand === "function") {
-                    nextSpace.onLand(player);
+                    nextSpace.onLand(player, this);
                 }
-            }
+                // Move the chat message here:
+                this.fixedUI.updateChatMessage(
+                    `${player.username} is moved by Mr. Monopoly to ${nextSpace.name}!`
+                );
+            });
         }
+
+        // If doubles, let the player take another turn
+        if (roll.d1 === roll.d2) {
+            this.fixedUI.updateChatMessage(
+                `${player.username} rolled doubles and gets another turn!`
+            );
+            this.startTurn();
+        }
+
+        this.fixedUI.updateChatMessage(
+            `${player.username} rolled ${roll.d1} + ${roll.d2} (Mega: ${roll.mega}) and moved to ${landedSquare.name}`
+        );
     }
 
     useBusTicket() {
@@ -140,7 +170,22 @@ class SinglePlayerGame {
         // Implement bus ticket logic here (e.g., let player choose destination)
         alert(`${player.username} used a bus ticket! (Implement destination selection logic)`);
         // After using, call onLand for the chosen space
-        // this.monopolyGame.board[newPosition].onLand(player);
+        // this.board[newPosition].onLand(player);
+    }
+
+    getDebugDiceValues() {
+        return new Promise(resolve => {
+            const modal = document.getElementById('debug-dice-modal');
+            modal.style.display = 'flex';
+            document.getElementById('debug-dice-ok').onclick = () => {
+                const d1 = parseInt(document.getElementById('debug-die1').value, 10);
+                const d2 = parseInt(document.getElementById('debug-die2').value, 10);
+                let mega = document.getElementById('debug-mega').value;
+                if (mega !== "mrMonopoly" && mega !== "busTicket") mega = parseInt(mega, 10);
+                modal.style.display = 'none';
+                resolve({ d1, d2, mega });
+            };
+        });
     }
 }
 

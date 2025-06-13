@@ -75,7 +75,7 @@ class BuyableSpace extends BoardSpace {
     }
 
     buy(player) {
-        player.money -= this.price;
+        player.bank -= this.price; // <-- changed from player.money
         this.owner = player;
         player.addRealEstate(this); // Add to player's owned list
         return true;
@@ -83,7 +83,7 @@ class BuyableSpace extends BoardSpace {
 
     offerPurchase(player) {
         if (this.owner) return false;
-        if (player.money < this.price) return false;
+        if (player.bank < this.price) return false; // <-- changed from player.money
         const confirmation = confirm(`${player.name}, do you want to buy ${this.name} for $${this.price}?`);
         if (confirmation) {
             return this.buy(player);
@@ -91,13 +91,12 @@ class BuyableSpace extends BoardSpace {
     }
 
     onLand(player) {
-        // console.log("BuyableSpace onLand called for", this.name);
         if (!this.owner) {
             this.offerPurchase(player);
         } else if (this.owner !== player) {
             const rent = this.calculateRent();
-            player.money -= rent;
-            this.owner.money += rent;
+            player.bank -= rent; // <-- changed from player.money
+            this.owner.bank += rent; // <-- changed from this.owner.money
             console.log(`${player.name} paid $${rent} rent to ${this.owner.name}`);
         }
     }

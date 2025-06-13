@@ -125,6 +125,30 @@ class FixedUIScreen {
             document.body.appendChild(infoDiv);
         }
         infoDiv.innerHTML = ""; // Will be filled by updatePlayerInfo
+
+        // Add or update chat panel (bottom right)
+        let chatDiv = document.getElementById("mm-chat");
+        if (!chatDiv) {
+            chatDiv = document.createElement("div");
+            chatDiv.id = "mm-chat";
+            chatDiv.style.position = "fixed";
+            chatDiv.style.right = "12px"; // Move closer to the edge
+            chatDiv.style.bottom = "12px"; // Move closer to the edge
+            chatDiv.style.zIndex = "2000";
+            chatDiv.style.background = "#fffbeed0";
+            chatDiv.style.border = "2px solid #7a4f1d";
+            chatDiv.style.borderRadius = "10px";
+            chatDiv.style.padding = "10px 12px";
+            chatDiv.style.minWidth = "160px";
+            chatDiv.style.maxWidth = "220px";
+            chatDiv.style.maxHeight = "140px";
+            chatDiv.style.overflowY = "auto";
+            chatDiv.style.fontFamily = "sans-serif";
+            chatDiv.style.fontSize = "0.98em";
+            chatDiv.style.boxShadow = "0 2px 8px #0002";
+            chatDiv.innerHTML = `<div id="mm-chat-messages"></div>`;
+            document.body.appendChild(chatDiv);
+        }
     }
 
     attachHandlers() {
@@ -146,6 +170,20 @@ class FixedUIScreen {
                 <span style="float:right;">$${p.bank}</span>
             </div>`
         ).join("");
+    }
+
+    updateChatMessage(message) {
+        const chatMessages = document.getElementById("mm-chat-messages");
+        if (!chatMessages) return;
+        // Add new message to the bottom
+        const msgDiv = document.createElement("div");
+        msgDiv.style.marginBottom = "6px";
+        msgDiv.textContent = message;
+        chatMessages.appendChild(msgDiv);
+        // Scroll to bottom (use setTimeout to ensure DOM update)
+        requestAnimationFrame(() => {
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        });
     }
 }
 

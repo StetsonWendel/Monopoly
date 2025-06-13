@@ -285,4 +285,3 @@ findNextUnownedProperty(fromPos) {
 }
 }
 
-module.exports = MonopolyGame;

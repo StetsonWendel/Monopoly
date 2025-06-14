@@ -17,10 +17,10 @@ class GoSpace extends BoardSpace {
     // Called when a player lands on this space
     onLand(player, game) {
         // Award $200 (or custom amount) for landing on GO
-        if (player && typeof player.money === "number") {
-            player.money += 200;
-            console.log(`${player.name} landed on GO and collected $200!`);
-        }
+        // if (player && typeof player.money === "number") {
+        //     player.money += 200;
+        //     console.log(`${player.name} landed on GO and collected $200!`);
+        // }
     }
 }
 

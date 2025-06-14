@@ -16,11 +16,8 @@ class CommunityChestSpace extends BoardSpace {
 
     // Called when a player lands on this space
     onLand(player, game) {
-        // Draw a community chest card and apply its effect
-        if (game && typeof game.drawCommunityChestCard === "function") {
-            game.drawCommunityChestCard(player);
-        } else {
-            console.log(`${player.name} landed on Community Chest, but no card logic is implemented.`);
+        if (game.communityChestDeck && typeof game.communityChestDeck.drawAndShowCard === "function") {
+            game.communityChestDeck.drawAndShowCard(player, game);
         }
     }
 }

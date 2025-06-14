@@ -94,30 +94,30 @@ class MonopolyBaseLogic {
         return null;
     }
 
-    showCardModal(card, onClose) {
-        const modal = document.getElementById("card-modal");
-        const img = document.getElementById("card-modal-img");
-        const text = document.getElementById("card-modal-text");
-        const closeBtn = document.getElementById("card-modal-close");
-    
-        img.src = card.img;
-        text.textContent = card.text;
-        modal.style.display = "flex";
-    
-        // Remove any previous handler
-        closeBtn.onclick = null;
-        closeBtn.onclick = () => {
-            modal.style.display = "none";
-            if (typeof onClose === "function") onClose();
-        };
+    findHighestOwnedRent() {
+        let best = null;
+        let bestRent = -1;
+        for (const sq of this.board) {
+            if (
+                (sq.realEstateType === "property" || sq.realEstateType === "railroad" || sq.realEstateType === "utility") &&
+                sq.owner && sq.owner !== "unowned" && sq.owner !== "bank" &&
+                typeof sq.calculateRent === "function"
+            ) {
+                const rent = sq.calculateRent();
+                if (rent > bestRent) {
+                    bestRent = rent;
+                    best = sq;
+                }
+            }
+        }
+        return best;
     }
 
-    drawChanceCard(player, gameInstance) {
-        const card = this.chanceDeck.draw();
-        this.showCardModal(card, () => {
-            card.effect(player, gameInstance);
-            gameInstance.render();
-        });
+    sendToJail(player) {
+        const jailIdx = this.board.findIndex(sq => sq.type === "jail" || sq.name === "Jail");
+        player.position = jailIdx;
+        player.inJail = true;
+        player.jailTurns = 0;
     }
 }
 

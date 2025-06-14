@@ -55,7 +55,7 @@ class SinglePlayerGame {
             this.busTicketDeck
         );
 
-        this.debugMode = false; // Set to true to enable debug mode
+        this.debugMode = true; // Set to true to enable debug mode
     }
 
     endTurn() {
@@ -95,6 +95,89 @@ class SinglePlayerGame {
         busBtn.onclick = () => {
             modal.style.display = "none";
             this.useBusTicket();
+        };
+
+        if (player.inJail) {
+            // Show jail options
+            this.showJailOptions(player);
+            return;
+        }
+    }
+
+    showJailOptions(player) {
+        const modal = document.getElementById("jail-modal");
+        const rollBtn = document.getElementById("jail-modal-roll");
+        const payBtn = document.getElementById("jail-modal-pay");
+        const cardBtn = document.getElementById("jail-modal-card");
+        const info = document.getElementById("jail-modal-info");
+
+        modal.style.display = "flex";
+        info.textContent = `${player.username}, you are in Jail (Turn ${player.jailTurns + 1}/3).`;
+
+        // Remove previous handlers
+        rollBtn.onclick = null;
+        payBtn.onclick = null;
+        cardBtn.onclick = null;
+
+        // Roll for doubles
+        rollBtn.onclick = async () => {
+            modal.style.display = "none";
+            let roll = this.debugMode ? await this.getDebugDiceValues() : this.logic.rollDice();
+            if (roll.d1 === roll.d2) {
+                // Got out with doubles
+                player.inJail = false;
+                player.jailTurns = 0;
+                this.fixedUI.updateChatMessage(`${player.username} rolled doubles and gets out of Jail!`);
+                this.logic.movePlayer(player, roll.d1 + roll.d2);
+                this.render();
+                const landedSquare = this.board[player.position];
+                if (typeof landedSquare.onLand === "function") {
+                    landedSquare.onLand(player, this);
+                }
+                // Do NOT give another turn for doubles
+            } else {
+                player.jailTurns++;
+                if (player.jailTurns >= 3) {
+                    // Must pay $50 and move
+                    player.bank -= 50;
+                    player.inJail = false;
+                    player.jailTurns = 0;
+                    this.fixedUI.updateChatMessage(`${player.username} paid $50 after 3 turns and gets out of Jail.`);
+                    this.logic.movePlayer(player, roll.d1 + roll.d2);
+                    this.render();
+                    const landedSquare = this.board[player.position];
+                    if (typeof landedSquare.onLand === "function") {
+                        landedSquare.onLand(player, this);
+                    }
+                } else {
+                    this.fixedUI.updateChatMessage(`${player.username} did not roll doubles and remains in Jail.`);
+                    this.endTurn();
+                }
+            }
+        };
+
+        // Pay $50 to get out
+        payBtn.onclick = () => {
+            modal.style.display = "none";
+            player.bank -= 50;
+            player.inJail = false;
+            player.jailTurns = 0;
+            this.fixedUI.updateChatMessage(`${player.username} paid $50 to get out of Jail.`);
+            this.startTurn(); // Let them roll and move
+        };
+
+        // Use Get Out of Jail Free card
+        cardBtn.onclick = () => {
+            if (player.hasGetOutOfJailFree) {
+                modal.style.display = "none";
+                player.hasGetOutOfJailFree = false;
+                player.inJail = false;
+                player.jailTurns = 0;
+                this.fixedUI.updateChatMessage(`${player.username} used a Get Out of Jail Free card!`);
+                this.startTurn(); // Let them roll and move
+            } else {
+                this.fixedUI.updateChatMessage(`You do not have a Get Out of Jail Free card.`);
+            }
         };
     }
 

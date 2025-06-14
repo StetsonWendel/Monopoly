@@ -108,15 +108,7 @@ module.exports = [
         text: "Go to Jail. Go directly to Jail. Do not pass GO, do not collect $200.",
         img: 'games/mega-monopoly/assets/ChanceCards/Chance_GTJ.png',
         effect: (player, game) => {
-            const jailIdx = game.board.findIndex(sq => sq.type === "jail" || sq.name === "Jail");
-            if (jailIdx !== -1) {
-                player.position = jailIdx;
-                player.inJail = true;
-                game.render();
-                if (typeof game.board[player.position].onLand === "function") {
-                    game.board[player.position].onLand(player, game);
-                }
-            }
+            game.logic.sendToJail(player);
         }
     },
     {

@@ -17,11 +17,12 @@ class BusTicketSpace extends BoardSpace {
 
     // Called when a player lands on this space
     onLand(player, game) {
-        // Trigger bus ticket logic if implemented in the game
-        if (game && typeof game.giveBusTicket === "function") {
-            game.drawBusTicket(player);
-        } else {
-            console.log(`${player.name} landed on Bus Ticket, but no bus ticket logic is implemented.`);
+        player.numBustickets = (player.numBustickets || 0) + 1;
+        if (game.fixedUI && typeof game.fixedUI.updateChatMessage === "function") {
+            game.fixedUI.updateChatMessage(`${player.username} received a Bus Ticket!`);
+        }
+        if (typeof game.render === "function") {
+            game.render();
         }
     }
 }

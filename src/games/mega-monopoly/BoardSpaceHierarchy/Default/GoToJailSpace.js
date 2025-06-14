@@ -16,11 +16,12 @@ class GoToJailSpace extends BoardSpace {
 
     // Called when a player lands on this space
     onLand(player, game) {
-        // Send the player to jail if game logic is implemented
-        if (game && typeof game.sendPlayerToJail === "function") {
-            game.sendPlayerToJail(player);
-        } else {
-            console.log(`${player.name} landed on Go To Jail, but no jail logic is implemented.`);
+        game.logic.sendToJail(player);
+        if (game.fixedUI && typeof game.fixedUI.updateChatMessage === "function") {
+            game.fixedUI.updateChatMessage(`${player.username} was sent to Jail!`);
+        }
+        if (typeof game.endTurn === "function") {
+            game.endTurn();
         }
     }
 }

@@ -10,7 +10,7 @@ class JailSpace extends BoardSpace {
     // Called when a player lands on this space
     onLand(player, game) {
         // Usually, nothing happens if you just land on Jail (not sent there)
-        console.log(`${player.name} is just visiting Jail.`);
+        // console.log(`${player.name} is just visiting Jail.`);
     }
 }
 

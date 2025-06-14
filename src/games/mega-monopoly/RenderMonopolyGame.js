@@ -154,6 +154,14 @@ class RenderMonopolyGame {
                 <button id="debug-dice-ok">OK</button>
               </div>
             </div>
+            <div id="jail-modal" style="display:none; position:fixed; left:0; top:0; width:100vw; height:100vh; background:#0008; z-index:9999; align-items:center; justify-content:center;">
+              <div style="background:#fffbeed0; padding:24px; border-radius:12px; max-width:400px; box-shadow:0 2px 12px #0003;">
+                <div id="jail-modal-info"></div>
+                <button id="jail-modal-roll">Roll for Doubles</button>
+                <button id="jail-modal-pay">Pay $50</button>
+                <button id="jail-modal-card">Use Get Out of Jail Free</button>
+              </div>
+            </div>
         `;
         const boardDiv = document.getElementById("mm-board");
 

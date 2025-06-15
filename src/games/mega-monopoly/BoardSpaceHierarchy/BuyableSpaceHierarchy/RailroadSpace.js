@@ -41,12 +41,43 @@ class RailroadSpace extends BuyableSpace {
     }
 
     buildDepot() {
+        if (!this.owner) return false; // No owner
         if (this.hasDepot) return false; // Depot already built
         if (!this.owner || this.owner.money < 100) return false; // Not enough money
         this.owner.money -= 100;
         this.hasDepot = true;
         // console.log(`${this.name} depot built by ${this.owner.name}`);
         return true;
+    }
+
+    /**
+     * Determines if this railroad can be developed (depot).
+     * @param {Object} player - The player attempting to develop.
+     * @returns {Object} { canBuild, reason }
+     */
+    canDevelop(player) {
+        const canBuildDepot = !this.hasDepot && player.bank >= 100;
+        let reason = "";
+        if (this.hasDepot) {
+            reason = "Depot already built on this railroad.";
+        } else if (player.bank < 100) {
+            reason = "Not enough money to build depot.";
+        }
+        return { canBuild: canBuildDepot, reason };
+    }
+
+    /**
+     * Sells back the depot for half price.
+     * @param {Object} player - The player attempting to undevelop.
+     * @returns {Object} { success, reason }
+     */
+    undevelop(player) {
+        if (!this.hasDepot) {
+            return { success: false, reason: "No depot to sell on this railroad." };
+        }
+        this.hasDepot = false;
+        player.bank += 50; // Half of $100
+        return { success: true, refund: 50 };
     }
 
     renderDevelopment() {

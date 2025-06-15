@@ -231,6 +231,26 @@ class FixedUIScreen {
 
         box.innerHTML += `<h3 style="margin-top:0;">Your Properties</h3>`;
 
+        // Toggle button for Develop/Mortgage-Undevelop mode
+        let mode = "develop";
+        const toggleBtn = document.createElement("button");
+        toggleBtn.textContent = "Switch to Mortgage/Undevelop";
+        toggleBtn.style.position = "absolute";
+        toggleBtn.style.top = "10px";
+        toggleBtn.style.left = "16px";
+        toggleBtn.style.background = "#eee";
+        toggleBtn.style.border = "1px solid #aaa";
+        toggleBtn.style.borderRadius = "6px";
+        toggleBtn.style.fontSize = "0.95em";
+        toggleBtn.style.cursor = "pointer";
+        toggleBtn.onclick = () => {
+            mode = mode === "develop" ? "mortgage" : "develop";
+            toggleBtn.textContent = mode === "develop" ? "Switch to Mortgage/Undevelop" : "Switch to Develop";
+            // Re-render property list in new mode
+            renderPropertyList();
+        };
+        box.appendChild(toggleBtn);
+
         // Add X close button at the top right (after innerHTML)
         const xBtn = document.createElement("button");
         xBtn.textContent = "×";
@@ -244,136 +264,152 @@ class FixedUIScreen {
         xBtn.onclick = () => document.body.removeChild(modal);
         box.appendChild(xBtn);
 
-        Object.keys(groups).forEach(group => {
-            const groupDiv = document.createElement("div");
-            groupDiv.style.marginBottom = "18px";
-            groupDiv.innerHTML = `<div style="font-weight:bold; margin-bottom:4px;">${group.replace(/\b\w/g, c => c.toUpperCase())}</div>`;
+        // Container for property groups
+        const groupsContainer = document.createElement("div");
+        box.appendChild(groupsContainer);
 
-            // Only check for color groups (not railroads/utilities)
-            const colorProps = board.filter(
-                sq => sq.realEstateType === "property" && sq.colorGroup === group
-            );
-            let canDevelop = false;
-            let buildingCost = null;
-            if (colorProps.length > 0) {
-                // Use the new countSet method
-                const groupProperty = groups[group].find(p => p.realEstateType === "property");
-                const colorGroup = groupProperty ? groupProperty.colorGroup : null;
-                const allOwned = colorGroup ? (player.countSet(colorGroup) === 0) : false;
-                canDevelop = allOwned && colorProps.some(p => !p.hasSkyscraper);
-                buildingCost = colorProps[0].buildingCost;
-            }
+        function renderPropertyList() {
+            groupsContainer.innerHTML = "";
+            Object.keys(groups).forEach(group => {
+                const groupDiv = document.createElement("div");
+                groupDiv.style.marginBottom = "18px";
+                groupDiv.innerHTML = `<div style="font-weight:bold; margin-bottom:4px;">${group.replace(/\b\w/g, c => c.toUpperCase())}</div>`;
 
-            groups[group].forEach(prop => {
-                const row = document.createElement("div");
-                row.style.display = "flex";
-                row.style.alignItems = "center";
-                row.style.marginBottom = "6px";
-                row.innerHTML = `<span style="flex:1; margin-right:16px;">${prop.name}</span>`;
+                groups[group].forEach(prop => {
+                    const row = document.createElement("div");
+                    row.style.display = "flex";
+                    row.style.alignItems = "center";
+                    row.style.marginBottom = "6px";
+                    row.innerHTML = `<span style="flex:1; margin-right:16px;">${prop.name}</span>`;
 
-                // Only show develop button for properties and railroads
-                if (prop.realEstateType === "property") {
-                    // Enforce even building
-                    const groupProps = groups[group].filter(p => p.realEstateType === "property");
-                    const minHouses = Math.min(...groupProps.map(p => p.houses || 0));
-                    const minHotels = Math.min(...groupProps.map(p => p.hasHotel ? 1 : 0));
-                    const minSkyscrapers = Math.min(...groupProps.map(p => p.hasSkyscraper ? 1 : 0));
+                    if (mode === "develop") {
+                        // DEVELOP MODE
+                        if (prop.realEstateType === "property" && typeof prop.canDevelop === "function") {
+                            const { canBuild, nextDev, reason, buildingCost } = prop.canDevelop(player, board, groups);
 
-                    let canBuild = false;
-                    let nextDev = "";
-                    if (!prop.hasHotel && !prop.hasSkyscraper && (prop.houses || 0) < 4) {
-                        canBuild = canDevelop && (prop.houses || 0) === minHouses && groupProps.every(p => (p.houses || 0) <= 4);
-                        nextDev = `House (${buildingCost})`;
-                    } else if (
-                        !prop.hasHotel &&
-                        (prop.houses || 0) === 4 &&
-                        groupProps.every(p => (p.houses === 4 || p.hasHotel || p.hasSkyscraper))
-                    ) {
-                        canBuild = canDevelop;
-                        nextDev = `Hotel (${buildingCost})`;
-                    } else if (!prop.hasSkyscraper && prop.hasHotel && groupProps.every(p => (p.hasHotel || p.hasSkyscraper))) {
-                        canBuild = canDevelop;
-                        nextDev = `Skyscraper (${buildingCost})`;
+                            const devBtn = document.createElement("button");
+                            devBtn.textContent = canBuild ? `Develop ${nextDev}` : "Develop";
+                            devBtn.disabled = !canBuild || player.bank < buildingCost;
+                            devBtn.style.opacity = devBtn.disabled ? "0.5" : "1";
+                            devBtn.style.cursor = devBtn.disabled ? "not-allowed" : "pointer";
+                            if (devBtn.disabled && reason) devBtn.title = reason;
+                            devBtn.onclick = () => {
+                                if (devBtn.disabled) return;
+                                if (player.bank < buildingCost) {
+                                    alert("Not enough money to develop!");
+                                    return;
+                                }
+                                if (prop.develop && prop.develop()) {
+                                    if (typeof prop.renderDevelopment === "function") {
+                                        prop.renderDevelopment();
+                                    }
+                                    this.updateChatMessage &&
+                                        this.updateChatMessage(`${player.username} developed ${prop.name}!`);
+                                    document.body.removeChild(modal);
+                                    this.showRealEstateList(player, board);
+                                } else {
+                                    alert("Unable to develop this property.");
+                                }
+                            };
+                            row.appendChild(devBtn);
+                        } else if (prop.realEstateType === "railroad" && typeof prop.canDevelop === "function") {
+                            const { canBuild, reason } = prop.canDevelop(player);
+
+                            const depotBtn = document.createElement("button");
+                            depotBtn.textContent = canBuild ? "Develop ($100)" : "Develop";
+                            depotBtn.disabled = !canBuild;
+                            depotBtn.style.opacity = depotBtn.disabled ? "0.5" : "1";
+                            depotBtn.style.cursor = depotBtn.disabled ? "not-allowed" : "pointer";
+                            if (depotBtn.disabled && reason) depotBtn.title = reason;
+                            depotBtn.onclick = () => {
+                                if (depotBtn.disabled) return;
+                                if (player.bank < 100) {
+                                    alert("Not enough money to build depot!");
+                                    return;
+                                }
+                                if (prop.buildDepot && prop.buildDepot()) {
+                                    if (typeof prop.renderDevelopment === "function") {
+                                        prop.renderDevelopment();
+                                    }
+                                    this.updateChatMessage &&
+                                        this.updateChatMessage(`${player.username} built a depot on ${prop.name}!`);
+                                    document.body.removeChild(modal);
+                                    this.showRealEstateList(player, board);
+                                } else {
+                                    alert("Unable to build depot.");
+                                }
+                            };
+                            row.appendChild(depotBtn);
+                        }
+                    } else {
+                        // MORTGAGE/UNDEVELOP MODE
+                        // Undevelop button for properties/railroads
+                        if (typeof prop.undevelop === "function") {
+                            const undevelopBtn = document.createElement("button");
+                            undevelopBtn.textContent = "Undevelop";
+                            undevelopBtn.disabled = false;
+                            undevelopBtn.style.marginRight = "8px";
+                            undevelopBtn.onclick = () => {
+                                let result;
+                                if (prop.realEstateType === "property") {
+                                    result = prop.undevelop(player, board, groups);
+                                } else {
+                                    result = prop.undevelop(player);
+                                }
+                                if (result.success) {
+                                    if (typeof prop.renderDevelopment === "function") {
+                                        prop.renderDevelopment();
+                                    }
+                                    this.updateChatMessage &&
+                                        this.updateChatMessage(`${player.username} sold development on ${prop.name} for $${result.refund}.`);
+                                    document.body.removeChild(modal);
+                                    this.showRealEstateList(player, board);
+                                } else {
+                                    alert(result.reason || "Unable to undevelop.");
+                                }
+                            };
+                            row.appendChild(undevelopBtn);
+                        }
+                        // Mortgage/unmortgage button for all buyable spaces
+                        if (typeof prop.mortgage === "function" && !prop.isMortgaged) {
+                            const mortgageBtn = document.createElement("button");
+                            mortgageBtn.textContent = `Mortgage (+$${prop.mortgageValue})`;
+                            mortgageBtn.onclick = () => {
+                                const result = prop.mortgage(player);
+                                if (result.success) {
+                                    this.updateChatMessage &&
+                                        this.updateChatMessage(`${player.username} mortgaged ${prop.name} for $${result.amount}.`);
+                                    document.body.removeChild(modal);
+                                    this.showRealEstateList(player, board);
+                                } else {
+                                    alert(result.reason || "Unable to mortgage.");
+                                }
+                            };
+                            row.appendChild(mortgageBtn);
+                        } else if (typeof prop.unmortgage === "function" && prop.isMortgaged) {
+                            const unmortgageBtn = document.createElement("button");
+                            unmortgageBtn.textContent = `Unmortgage (-$${Math.ceil(prop.mortgageValue * 1.1)})`;
+                            unmortgageBtn.onclick = () => {
+                                const result = prop.unmortgage(player);
+                                if (result.success) {
+                                    this.updateChatMessage &&
+                                        this.updateChatMessage(`${player.username} unmortgaged ${prop.name} for $${result.cost}.`);
+                                    document.body.removeChild(modal);
+                                    this.showRealEstateList(player, board);
+                                } else {
+                                    alert(result.reason || "Unable to unmortgage.");
+                                }
+                            };
+                            row.appendChild(unmortgageBtn);
+                        }
                     }
-
-                    let reason = "";
-                    if (!canDevelop) {
-                        reason = "You must own all properties in this color group to develop.";
-                    } else if (player.bank < buildingCost) {
-                        reason = "Not enough money to develop.";
-                    } else if (!canBuild) {
-                        reason = "You must build evenly across all properties in this group.";
-                    }
-
-                    const devBtn = document.createElement("button");
-                    devBtn.textContent = canBuild ? `Develop ${nextDev}` : "Develop";
-                    devBtn.disabled = !canBuild || player.bank < buildingCost;
-                    devBtn.style.opacity = devBtn.disabled ? "0.5" : "1";
-                    devBtn.style.cursor = devBtn.disabled ? "not-allowed" : "pointer";
-                    if (devBtn.disabled && reason) devBtn.title = reason;
-                    devBtn.onclick = () => {
-                        if (devBtn.disabled) return;
-                        if (player.bank < buildingCost) {
-                            alert("Not enough money to develop!");
-                            return;
-                        }
-                        // Actually develop the property using its method
-                        if (prop.develop && prop.develop()) {
-                            player.bank -= buildingCost;
-                            if (typeof prop.renderDevelopment === "function") {
-                                prop.renderDevelopment();
-                            }
-                            this.updateChatMessage &&
-                                this.updateChatMessage(`${player.username} developed ${prop.name}!`);
-                            document.body.removeChild(modal);
-                            this.showRealEstateList(player, board);
-                        } else {
-                            alert("Unable to develop this property.");
-                        }
-                    };
-                    row.appendChild(devBtn);
-                } else if (prop.realEstateType === "railroad") {
-                    // Get all railroads from the board
-                    const canBuildDepot = !prop.hasDepot && player.bank >= 100;
-
-                    let reason = "";
-                    if (prop.hasDepot) {
-                        reason = "Depot already built on this railroad.";
-                    } else if (player.bank < 100) {
-                        reason = "Not enough money to build depot.";
-                    }
-
-                    const depotBtn = document.createElement("button");
-                    depotBtn.textContent = canBuildDepot ? "Develop ($100)" : "Develop";
-                    depotBtn.disabled = !canBuildDepot;
-                    depotBtn.style.opacity = depotBtn.disabled ? "0.5" : "1";
-                    depotBtn.style.cursor = depotBtn.disabled ? "not-allowed" : "pointer";
-                    if (depotBtn.disabled && reason) depotBtn.title = reason;
-                    depotBtn.onclick = () => {
-                        if (depotBtn.disabled) return;
-                        if (player.bank < 100) {
-                            alert("Not enough money to build depot!");
-                            return;
-                        }
-                        // Actually build the depot using its method
-                        if (prop.buildDepot && prop.buildDepot()) {
-                            if (typeof prop.renderDevelopment === "function") {
-                                prop.renderDevelopment();
-                            }
-                            this.updateChatMessage &&
-                                this.updateChatMessage(`${player.username} built a depot on ${prop.name}!`);
-                            document.body.removeChild(modal);
-                            this.showRealEstateList(player, board);
-                        } else {
-                            alert("Unable to build depot.");
-                        }
-                    };
-                    row.appendChild(depotBtn);
-                }
-                groupDiv.appendChild(row);
+                    groupDiv.appendChild(row);
+                });
+                groupsContainer.appendChild(groupDiv);
             });
-            box.appendChild(groupDiv);
-        });
+        }
+
+        renderPropertyList();
 
         // Bottom close button (optional, keep for accessibility)
         const closeBtn = document.createElement("button");

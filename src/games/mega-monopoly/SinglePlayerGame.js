@@ -55,7 +55,7 @@ class SinglePlayerGame {
             this.busTicketDeck
         );
 
-        this.debugMode = false; // Set to true to enable debug mode
+        this.debugMode = true; // Set to true to enable debug mode
     }
 
     endTurn() {

@@ -300,23 +300,53 @@ class MonopolyBaseLogic {
 
     /**
      * Executes a trade between two players.
-     * @param {Object} trade - Trade object from the UI.
+     * @param {Object} trade - Trade object from the UI or RL agent.
+     *   {
+     *     from: Player,
+     *     to: Player,
+     *     offerProps: [PropertySpace|RailroadSpace|UtilitySpace],
+     *     wantProps: [PropertySpace|RailroadSpace|UtilitySpace],
+     *     offerMoney: number,
+     *     wantMoney: number,
+     *     offerJail: boolean,
+     *     wantJail: boolean
+     *   }
+     * @returns {boolean} success
      */
     executeTrade(trade) {
+        // Validate players
+        if (!trade.from || !trade.to || trade.from === trade.to) return false;
+
+        // Validate properties
+        const ownsAll = (player, props) =>
+            (props || []).every(prop => prop.owner === player);
+
+        if (!ownsAll(trade.from, trade.offerProps) || !ownsAll(trade.to, trade.wantProps)) {
+            return false; // Can't trade what you don't own
+        }
+
+        // Validate money
+        if ((trade.offerMoney || 0) > trade.from.bank) return false;
+        if ((trade.wantMoney || 0) > trade.to.bank) return false;
+
+        // Validate jail cards
+        if (trade.offerJail && (trade.from.getOutOfJailFree || 0) < 1) return false;
+        if (trade.wantJail && (trade.to.getOutOfJailFree || 0) < 1) return false;
+
         // Transfer properties
-        trade.offerProps.forEach(prop => {
+        (trade.offerProps || []).forEach(prop => {
             this._transferProperty(trade.from, trade.to, prop);
         });
-        trade.wantProps.forEach(prop => {
+        (trade.wantProps || []).forEach(prop => {
             this._transferProperty(trade.to, trade.from, prop);
         });
 
         // Transfer jail cards
-        if (trade.offerJail && trade.from.getOutOfJailFree > 0) {
+        if (trade.offerJail) {
             trade.from.getOutOfJailFree--;
             trade.to.getOutOfJailFree = (trade.to.getOutOfJailFree || 0) + 1;
         }
-        if (trade.wantJail && trade.to.getOutOfJailFree > 0) {
+        if (trade.wantJail) {
             trade.to.getOutOfJailFree--;
             trade.from.getOutOfJailFree = (trade.from.getOutOfJailFree || 0) + 1;
         }
@@ -326,6 +356,12 @@ class MonopolyBaseLogic {
             trade.from.bank -= trade.offerMoney;
             trade.to.bank += trade.offerMoney;
         }
+        if (trade.wantMoney > 0) {
+            trade.to.bank -= trade.wantMoney;
+            trade.from.bank += trade.wantMoney;
+        }
+
+        return true;
     }
 
     _transferProperty(from, to, prop) {

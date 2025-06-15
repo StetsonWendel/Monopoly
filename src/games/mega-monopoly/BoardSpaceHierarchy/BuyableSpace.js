@@ -105,6 +105,51 @@ class BuyableSpace extends BoardSpace {
     calculateRent() {
         return 0;
     }
+
+    /**
+     * Mortgage this property. Returns {success, reason, amount}
+     * Cannot mortgage if developed (houses/hotel/skyscraper for properties, depot for railroads, etc).
+     */
+    mortgage(player) {
+        if (this.isMortgaged) {
+            return { success: false, reason: "Already mortgaged." };
+        }
+        // Prevent mortgaging if developed
+        if (this.realEstateType === "property") {
+            if ((this.houses && this.houses > 0) || this.hasHotel || this.hasSkyscraper) {
+                return { success: false, reason: "Cannot mortgage a developed property." };
+            }
+        } else if (this.realEstateType === "railroad") {
+            if (this.hasDepot) {
+                return { success: false, reason: "Cannot mortgage a railroad with a depot." };
+            }
+        } else if (this.realEstateType === "utility") {
+            // If you have development for utilities, check here
+            if (this.hasDevelopment) {
+                return { success: false, reason: "Cannot mortgage a developed utility." };
+            }
+        }
+        this.isMortgaged = true;
+        player.bank += this.mortgageValue;
+        return { success: true, amount: this.mortgageValue };
+    }
+
+    /**
+     * Unmortgage this property. Returns {success, reason, cost}
+     * Cost is mortgage value + 10% interest (rounded up).
+     */
+    unmortgage(player) {
+        if (!this.isMortgaged) {
+            return { success: false, reason: "Property is not mortgaged." };
+        }
+        const cost = Math.ceil(this.mortgageValue * 1.1);
+        if (player.bank < cost) {
+            return { success: false, reason: "Not enough money to unmortgage.", cost };
+        }
+        player.bank -= cost;
+        this.isMortgaged = false;
+        return { success: true, cost };
+    }
 }
 
 module.exports = BuyableSpace;

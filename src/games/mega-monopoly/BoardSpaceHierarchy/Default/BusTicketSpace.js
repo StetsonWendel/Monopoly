@@ -17,7 +17,7 @@ class BusTicketSpace extends BoardSpace {
 
     // Called when a player lands on this space
     onLand(player, game) {
-        player.numBustickets = (player.numBustickets || 0) + 1;
+        player.numBusTickets = (player.numBusTickets || 0) + 1;
         if (game.fixedUI && typeof game.fixedUI.updateChatMessage === "function") {
             game.fixedUI.updateChatMessage(`${player.username} received a Bus Ticket!`);
         }

@@ -55,7 +55,7 @@ class SinglePlayerGame {
             this.busTicketDeck
         );
 
-        this.debugMode = true; // Set to true to enable debug mode
+        this.debugMode = false; // Set to true to enable debug mode
     }
 
     endTurn() {
@@ -80,7 +80,7 @@ class SinglePlayerGame {
 
         title.textContent = `${player.username}, it's your turn!`;
         rollBtn.style.display = "inline-block";
-        busBtn.style.display = player.numBustickets > 0 ? "inline-block" : "none";
+        busBtn.style.display = player.numBusTickets > 0 ? "inline-block" : "none";
 
         modal.style.display = "flex";
 
@@ -94,7 +94,7 @@ class SinglePlayerGame {
         };
         busBtn.onclick = () => {
             modal.style.display = "none";
-            this.useBusTicket();
+            this.logic.useBusTicket(this.players[this.whosTurn], this);
         };
 
         if (player.inJail) {
@@ -155,6 +155,8 @@ class SinglePlayerGame {
                     `${player.username} is moved by Mr. Monopoly to ${nextSpace.name}!`
                 );
             });
+        } else if (roll.mega === "busTicket") {
+            player.numBusTickets++;
         }
 
         // If doubles, let the player take another turn
@@ -170,14 +172,7 @@ class SinglePlayerGame {
         );
     }
 
-    useBusTicket() {
-        const player = this.players[this.whosTurn];
-        player.numBustickets--;
-        // Implement bus ticket logic here (e.g., let player choose destination)
-        alert(`${player.username} used a bus ticket! (Implement destination selection logic)`);
-        // After using, call onLand for the chosen space
-        // this.board[newPosition].onLand(player);
-    }
+
 
     getDebugDiceValues() {
         return new Promise(resolve => {

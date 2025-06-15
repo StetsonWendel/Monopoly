@@ -50,7 +50,7 @@ class BirthdayGiftSpace extends BoardSpace {
         busBtn.textContent = "Take a Bus Ticket";
         busBtn.style.marginRight = "16px";
         busBtn.onclick = () => {
-            player.numBustickets = (player.numBustickets || 0) + 1;
+            player.numBusTickets = (player.numBusTickets || 0) + 1;
             document.body.removeChild(modal);
             if (game.fixedUI && typeof game.fixedUI.updateChatMessage === "function") {
                 game.fixedUI.updateChatMessage(`${player.username} chose a Bus Ticket as their birthday gift!`);

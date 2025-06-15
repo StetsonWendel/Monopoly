@@ -50,35 +50,6 @@ class MonopolyBaseLogic {
         return null; // No unowned property found
     }
 
-    chooseBoardPositionByClick(player, board, onComplete) {
-        // Show instruction
-        const infoDiv = document.querySelector("#mm-info");
-        infoDiv.innerHTML = `${player.username} rolled TRIPLES! Click any space on the board to move there.`;
-
-        // Get all board cells
-        const boardCells = document.querySelectorAll('#mm-board > div');
-        // Handler function
-        const handleCellClick = (e) => {
-            const idx = Array.from(boardCells).indexOf(e.currentTarget);
-            if (idx === -1) return;
-
-            // Move player
-            player.position = idx;
-            const landedSquare = board[player.position];
-
-            // Clean up: remove all handlers
-            boardCells.forEach(cell => cell.removeEventListener('click', handleCellClick));
-
-            // Callback to continue game logic
-            if (typeof onComplete === "function") {
-                onComplete(landedSquare, idx);
-            }
-        };
-
-        // Attach click handler to each cell
-        boardCells.forEach(cell => cell.addEventListener('click', handleCellClick));
-    }
-
     moveMrMonopoly(player, board, onLandCallback) {
         const nextUnownedIdx = this.findNextUnownedProperty(player.position);
         if (nextUnownedIdx !== null) {
@@ -195,6 +166,136 @@ class MonopolyBaseLogic {
                 game.fixedUI.updateChatMessage(`You do not have a Get Out of Jail Free card.`);
             }
         };
+    }
+
+    useBusTicket(player, game) {
+        player.numBusTickets--;
+
+        const boardLen = this.board.length;
+        const sideLen = boardLen / 4;
+        const pos = player.position;
+
+        let validIndexes = [];
+
+        // Bottom row (0 to sideLen-1)
+        if (pos >= 0 && pos < sideLen) {
+            for (let i = pos + 1; i < sideLen; i++) validIndexes.push(i);
+        }
+        // Left side (sideLen to 2*sideLen-1)
+        else if (pos >= sideLen && pos < 2 * sideLen) {
+            for (let i = pos + 1; i < 2 * sideLen; i++) validIndexes.push(i);
+        }
+        // Top row (2*sideLen to 3*sideLen-1)
+        else if (pos >= 2 * sideLen && pos < 3 * sideLen) {
+            for (let i = pos + 1; i < 3 * sideLen; i++) validIndexes.push(i);
+        }
+        // Right side (3*sideLen to 4*sideLen-1)
+        else if (pos >= 3 * sideLen && pos < 4 * sideLen) {
+            for (let i = pos + 1; i < 4 * sideLen; i++) validIndexes.push(i);
+        }
+
+        if (validIndexes.length === 0) {
+            game.fixedUI.updateChatMessage("No spaces ahead in this row/side to move to.");
+            return;
+        }
+
+        // --- MAPPING LOGIC START ---
+        const size = 14; // or get from game.renderGame if dynamic
+        const positions = game.renderGame.getBoardPositions(size);
+        const boardCells = Array.from(document.querySelectorAll('#mm-board > div'));
+
+        // Handler function
+        const handleCellClick = (e) => {
+            // Find which Monopoly index was clicked
+            const cellIdx = boardCells.indexOf(e.currentTarget);
+            const clickedMonopolyIdx = positions.findIndex(
+                pos => pos.row * size + pos.col === cellIdx
+            );
+            if (!validIndexes.includes(clickedMonopolyIdx)) return;
+
+            // Clean up
+            validIndexes.forEach(monopolyIdx => {
+                const { row, col } = positions[monopolyIdx];
+                const idx = row * size + col;
+                boardCells[idx].removeEventListener('click', handleCellClick);
+                boardCells[idx].classList.remove('bus-ticket-highlight');
+            });
+
+            // Move player
+            player.position = clickedMonopolyIdx;
+            const landedSquare = this.board[player.position];
+            game.fixedUI.updateChatMessage(`${player.username} used a Bus Ticket to move to ${landedSquare.name || `Space ${clickedMonopolyIdx + 1}`}.`);
+            game.render();
+            if (typeof landedSquare.onLand === "function") {
+                landedSquare.onLand(player, game);
+            }
+        };
+
+        // Highlight and add listeners to the correct cells
+        validIndexes.forEach(monopolyIdx => {
+            const { row, col } = positions[monopolyIdx];
+            const cellIdx = row * size + col;
+            const cell = boardCells[cellIdx];
+            if (!cell) return;
+            cell.classList.add('bus-ticket-highlight');
+            cell.addEventListener('click', handleCellClick);
+        });
+        // --- MAPPING LOGIC END ---
+
+        // Show instruction
+        const infoDiv = document.querySelector("#mm-info");
+        if (infoDiv) {
+            infoDiv.innerHTML = `${player.username} used a Bus Ticket! Click any space ahead on your current side to move there.`;
+        }
+    }
+
+    moveTriples(player, game, onComplete) {
+        // Show instruction
+        const infoDiv = document.querySelector("#mm-info");
+        if (infoDiv) {
+            infoDiv.innerHTML = `${player.username} rolled TRIPLES! Click any space on the board to move there.`;
+        }
+
+        // Get mapping and board cells
+        const size = 14; // or get from game.renderGame if dynamic
+        const positions = game.renderGame.getBoardPositions(size);
+        const boardCells = Array.from(document.querySelectorAll('#mm-board > div'));
+
+        // Handler function
+        const handleCellClick = (e) => {
+            const cellIdx = boardCells.indexOf(e.currentTarget);
+            const clickedMonopolyIdx = positions.findIndex(
+                pos => pos.row * size + pos.col === cellIdx
+            );
+            if (clickedMonopolyIdx === -1) return;
+
+            // Clean up: remove all handlers
+            positions.forEach(({row, col}) => {
+                const idx = row * size + col;
+                if (boardCells[idx]) {
+                    boardCells[idx].removeEventListener('click', handleCellClick);
+                    boardCells[idx].classList.remove('bus-ticket-highlight');
+                }
+            });
+
+            // Move player
+            player.position = clickedMonopolyIdx;
+            const landedSquare = game.board[player.position];
+
+            // Callback to continue game logic
+            if (typeof onComplete === "function") {
+                onComplete(landedSquare, clickedMonopolyIdx);
+            }
+        };
+
+        // Highlight and attach click handler to every cell
+        positions.forEach(({row, col}, monopolyIdx) => {
+            const idx = row * size + col;
+            const cell = boardCells[idx];
+            if (!cell) return;
+            cell.classList.add('bus-ticket-highlight');
+            cell.addEventListener('click', handleCellClick);
+        });
     }
 }
 

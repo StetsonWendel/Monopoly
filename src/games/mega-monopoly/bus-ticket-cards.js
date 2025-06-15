@@ -3,6 +3,6 @@ module.exports = Array(16).fill().map(() => ({
     img: "games/mega-monopoly/assets/BusTickets/Bus_Ticket.png",
     effect: (player, game) => {
         // Implement bus ticket logic in your game (let player pick a space on their edge)
-        player.numBustickets++;
+        player.numBusTickets++;
     }
 }));

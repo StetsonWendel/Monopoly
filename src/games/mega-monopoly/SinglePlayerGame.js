@@ -31,7 +31,7 @@ class SinglePlayerGame {
         this.fixedUI = new FixedUIScreen(this.container, {
             onEndTurn: () => this.endTurn(),
             onQuit: () => { window.location.reload(); },
-            onTrade: () => { /* trade logic */ },
+            onTrade: () => this.handleTrade(),
             onSave: () => { /* save game logic */ },
             onViewRealEstate: () => this.fixedUI.showRealEstateList(this.players[this.whosTurn], this.board)
         });
@@ -186,6 +186,28 @@ class SinglePlayerGame {
                 modal.style.display = 'none';
                 resolve({ d1, d2, mega });
             };
+        });
+    }
+
+    handleTrade() {
+        this.fixedUI.showTradeModal(this.players, this.whosTurn, (tradeObj) => {
+            // Show the review modal to the other player
+            this.fixedUI.showTradeReviewModal(
+                tradeObj,
+                // onAccept
+                (trade) => {
+                    this.logic.executeTrade(trade); // Move trade logic to MonopolyBaseLogic
+                    this.fixedUI.updatePlayerInfo(this.players, this.whosTurn);
+                    this.fixedUI.updateChatMessage(
+                        `${trade.from.username} and ${trade.to.username} completed a trade!`
+                    );
+                    this.render();
+                },
+                // onReject
+                (trade) => {
+                    this.fixedUI.updateChatMessage(`${trade.to.username} rejected the trade.`);
+                }
+            );
         });
     }
 }

@@ -297,6 +297,50 @@ class MonopolyBaseLogic {
             cell.addEventListener('click', handleCellClick);
         });
     }
+
+    /**
+     * Executes a trade between two players.
+     * @param {Object} trade - Trade object from the UI.
+     */
+    executeTrade(trade) {
+        // Transfer properties
+        trade.offerProps.forEach(prop => {
+            this._transferProperty(trade.from, trade.to, prop);
+        });
+        trade.wantProps.forEach(prop => {
+            this._transferProperty(trade.to, trade.from, prop);
+        });
+
+        // Transfer jail cards
+        if (trade.offerJail && trade.from.getOutOfJailFree > 0) {
+            trade.from.getOutOfJailFree--;
+            trade.to.getOutOfJailFree = (trade.to.getOutOfJailFree || 0) + 1;
+        }
+        if (trade.wantJail && trade.to.getOutOfJailFree > 0) {
+            trade.to.getOutOfJailFree--;
+            trade.from.getOutOfJailFree = (trade.from.getOutOfJailFree || 0) + 1;
+        }
+
+        // Transfer money
+        if (trade.offerMoney > 0) {
+            trade.from.bank -= trade.offerMoney;
+            trade.to.bank += trade.offerMoney;
+        }
+    }
+
+    _transferProperty(from, to, prop) {
+        // Remove from old owner
+        ["properties", "railroads", "utilities"].forEach(type => {
+            if (from[type]) {
+                const idx = from[type].indexOf(prop);
+                if (idx !== -1) from[type].splice(idx, 1);
+            }
+        });
+        // Add to new owner
+        if (!to[prop.realEstateType + "s"]) to[prop.realEstateType + "s"] = [];
+        to[prop.realEstateType + "s"].push(prop);
+        prop.owner = to;
+    }
 }
 
 module.exports = MonopolyBaseLogic;

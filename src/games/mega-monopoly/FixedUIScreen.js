@@ -385,6 +385,266 @@ class FixedUIScreen {
         modal.appendChild(box);
         document.body.appendChild(modal);
     }
+
+    /**
+     * Show the trade modal UI.
+     * @param {Object[]} players - All players in the game.
+     * @param {number} whosTurn - Index of the current player.
+     * @param {Function} onProposeTrade - Callback(tradeObj) when trade is proposed.
+     */
+    showTradeModal(players, whosTurn, onProposeTrade) {
+        // Remove any existing modal
+        let oldModal = document.getElementById("trade-modal");
+        if (oldModal) oldModal.remove();
+
+        const player = players[whosTurn];
+
+        // Modal setup
+        const modal = document.createElement("div");
+        modal.id = "trade-modal";
+        modal.style.position = "fixed";
+        modal.style.left = "0";
+        modal.style.top = "0";
+        modal.style.width = "100vw";
+        modal.style.height = "100vh";
+        modal.style.background = "#0008";
+        modal.style.zIndex = "9999";
+        modal.style.display = "flex";
+        modal.style.alignItems = "center";
+        modal.style.justifyContent = "center";
+
+        const box = document.createElement("div");
+        box.style.background = "#fff";
+        box.style.padding = "24px";
+        box.style.borderRadius = "12px";
+        box.style.maxWidth = "600px";
+        box.style.boxShadow = "0 2px 12px #0003";
+        box.style.maxHeight = "80vh";
+        box.style.overflowY = "auto";
+        box.style.position = "relative";
+
+        // Select player to trade with
+        box.innerHTML = `<h3>Propose a Trade</h3>
+            <label>Trade with:
+                <select id="trade-with">
+                    ${players
+                        .map((p, i) =>
+                            i !== whosTurn
+                                ? `<option value="${i}">${p.username}</option>`
+                                : ""
+                        )
+                        .join("")}
+                </select>
+            </label>
+            <hr>
+            <div>
+                <b>What do you want?</b>
+                <div id="trade-want-list"></div>
+            </div>
+            <hr>
+            <div>
+                <b>What will you offer?</b>
+                <div id="trade-offer-list"></div>
+            </div>
+            <button id="trade-propose-btn">Propose Trade</button>
+            <button id="trade-cancel-btn" style="margin-left:12px;">Cancel</button>
+        `;
+
+        // Fill in want/offer lists
+        const wantList = box.querySelector("#trade-want-list");
+        const offerList = box.querySelector("#trade-offer-list");
+
+        // Helper to create checkboxes for properties/cards
+        function makeCheckboxList(items, namePrefix) {
+            return items
+                .map(
+                    (item, idx) =>
+                        `<label><input type="checkbox" name="${namePrefix}" value="${idx}"> ${item.name}</label><br>`
+                )
+                .join("");
+        }
+
+        // Want: properties/cards from other player
+        const updateWantList = () => {
+            const otherIdx = parseInt(box.querySelector("#trade-with").value, 10);
+            const other = players[otherIdx];
+            wantList.innerHTML =
+                "<b>Properties:</b><br>" +
+                makeCheckboxList(
+                    [
+                        ...(other.properties || []),
+                        ...(other.railroads || []),
+                        ...(other.utilities || [])
+                    ],
+                    "want-prop"
+                ) +
+                "<b>Get Out of Jail Free Cards:</b><br>" +
+                (other.getOutOfJailFree > 0
+                    ? `<label><input type="checkbox" name="want-jail" value="1"> 1 Card</label><br>`
+                    : "<i>None</i><br>");
+        };
+
+        // Offer: properties/cards/money from current player
+        const updateOfferList = () => {
+            offerList.innerHTML =
+                "<b>Properties:</b><br>" +
+                makeCheckboxList(
+                    [
+                        ...(player.properties || []),
+                        ...(player.railroads || []),
+                        ...(player.utilities || [])
+                    ],
+                    "offer-prop"
+                ) +
+                "<b>Get Out of Jail Free Cards:</b><br>" +
+                (player.getOutOfJailFree > 0
+                    ? `<label><input type="checkbox" name="offer-jail" value="1"> 1 Card</label><br>`
+                    : "<i>None</i><br>") +
+                `<b>Money:</b><br>
+                <input type="number" id="offer-money" min="0" max="${player.bank}" value="0" style="width:80px;">`;
+        };
+
+        box.querySelector("#trade-with").onchange = updateWantList;
+        updateWantList();
+        updateOfferList();
+
+        // Propose/cancel handlers
+        box.querySelector("#trade-propose-btn").onclick = () => {
+            const otherIdx = parseInt(box.querySelector("#trade-with").value, 10);
+            const other = players[otherIdx];
+
+            // Gather wants
+            const wantProps = Array.from(
+                box.querySelectorAll('input[name="want-prop"]:checked')
+            ).map(cb => {
+                const idx = parseInt(cb.value, 10);
+                return [
+                    ...(other.properties || []),
+                    ...(other.railroads || []),
+                    ...(other.utilities || [])
+                ][idx];
+            });
+            const wantJail = !!box.querySelector('input[name="want-jail"]:checked');
+
+            // Gather offers
+            const offerProps = Array.from(
+                box.querySelectorAll('input[name="offer-prop"]:checked')
+            ).map(cb => {
+                const idx = parseInt(cb.value, 10);
+                return [
+                    ...(player.properties || []),
+                    ...(player.railroads || []),
+                    ...(player.utilities || [])
+                ][idx];
+            });
+            const offerJail = !!box.querySelector('input[name="offer-jail"]:checked');
+            const offerMoney = parseInt(box.querySelector("#offer-money").value, 10) || 0;
+
+            // Validate
+            if (
+                wantProps.length === 0 &&
+                !wantJail &&
+                offerProps.length === 0 &&
+                !offerJail &&
+                offerMoney === 0
+            ) {
+                alert("You must select at least one item to trade.");
+                return;
+            }
+            if (offerMoney > player.bank) {
+                alert("You don't have enough money!");
+                return;
+            }
+
+            document.body.removeChild(modal);
+
+            // Callback to game logic
+            if (typeof onProposeTrade === "function") {
+                onProposeTrade({
+                    from: player,
+                    to: other,
+                    wantProps,
+                    wantJail,
+                    offerProps,
+                    offerJail,
+                    offerMoney,
+                    fromIdx: whosTurn,
+                    toIdx: otherIdx
+                });
+            }
+        };
+
+        box.querySelector("#trade-cancel-btn").onclick = () =>
+            document.body.removeChild(modal);
+
+        modal.appendChild(box);
+        document.body.appendChild(modal);
+    }
+
+    /**
+     * Show the trade review/accept modal for the other player.
+     * @param {Object} trade - Trade object.
+     * @param {Function} onAccept - Callback(tradeObj) if accepted.
+     * @param {Function} onReject - Callback(tradeObj) if rejected.
+     */
+    showTradeReviewModal(trade, onAccept, onReject) {
+        let oldModal = document.getElementById("trade-review-modal");
+        if (oldModal) oldModal.remove();
+
+        const modal = document.createElement("div");
+        modal.id = "trade-review-modal";
+        modal.style.position = "fixed";
+        modal.style.left = "0";
+        modal.style.top = "0";
+        modal.style.width = "100vw";
+        modal.style.height = "100vh";
+        modal.style.background = "#0008";
+        modal.style.zIndex = "9999";
+        modal.style.display = "flex";
+        modal.style.alignItems = "center";
+        modal.style.justifyContent = "center";
+
+        const box = document.createElement("div");
+        box.style.background = "#fff";
+        box.style.padding = "24px";
+        box.style.borderRadius = "12px";
+        box.style.maxWidth = "500px";
+        box.style.boxShadow = "0 2px 12px #0003";
+        box.style.maxHeight = "80vh";
+        box.style.overflowY = "auto";
+        box.style.position = "relative";
+
+        // Trade summary
+        box.innerHTML = `<h3>Trade Offer</h3>
+            <div><b>${trade.from.username}</b> offers:</div>
+            <ul>
+                ${trade.offerProps.map(p => `<li>${p.name}</li>`).join("")}
+                ${trade.offerJail ? "<li>Get Out of Jail Free Card</li>" : ""}
+                ${trade.offerMoney > 0 ? `<li>$${trade.offerMoney}</li>` : ""}
+                ${trade.offerProps.length === 0 && !trade.offerJail && trade.offerMoney === 0 ? "<li>Nothing</li>" : ""}
+            </ul>
+            <div><b>${trade.from.username}</b> wants:</div>
+            <ul>
+                ${trade.wantProps.map(p => `<li>${p.name}</li>`).join("")}
+                ${trade.wantJail ? "<li>Get Out of Jail Free Card</li>" : ""}
+                ${trade.wantProps.length === 0 && !trade.wantJail ? "<li>Nothing</li>" : ""}
+            </ul>
+            <button id="trade-accept-btn">Accept</button>
+            <button id="trade-reject-btn" style="margin-left:12px;">Reject</button>
+        `;
+
+        box.querySelector("#trade-accept-btn").onclick = () => {
+            document.body.removeChild(modal);
+            if (typeof onAccept === "function") onAccept(trade);
+        };
+        box.querySelector("#trade-reject-btn").onclick = () => {
+            document.body.removeChild(modal);
+            if (typeof onReject === "function") onReject(trade);
+        };
+
+        modal.appendChild(box);
+        document.body.appendChild(modal);
+    }
 }
 
 module.exports = FixedUIScreen;

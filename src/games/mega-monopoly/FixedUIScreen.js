@@ -90,7 +90,7 @@ class FixedUIScreen {
         const btns = [
             ["mm-end-turn", "E", "End Turn"],
             ["mm-trade", "T", "Trade"],
-            ["mm-view-realestate", "V", "View/Upgrade Real Estate"],
+            ["mm-view-realestate", "V", "View/Develop Real Estate"],
             ["mm-save", "S", "Save Game"],
             ["mm-back", "Q", "Quit Game"]
         ];
@@ -184,6 +184,206 @@ class FixedUIScreen {
         requestAnimationFrame(() => {
             chatMessages.scrollTop = chatMessages.scrollHeight;
         });
+    }
+
+    showRealEstateList(player, board) {
+        const properties = [
+            ...(player.properties || []),
+            ...(player.railroads || []),
+            ...(player.utilities || [])
+        ];
+
+        // Group properties by colorGroup or type
+        const groups = {};
+        properties.forEach(prop => {
+            const group = prop.colorGroup || prop.realEstateType || "Other";
+            if (!groups[group]) groups[group] = [];
+            groups[group].push(prop);
+        });
+
+        // Remove any existing modal
+        let oldModal = document.getElementById("realestate-modal");
+        if (oldModal) oldModal.remove();
+
+        // Create modal
+        const modal = document.createElement("div");
+        modal.id = "realestate-modal";
+        modal.style.position = "fixed";
+        modal.style.left = "0";
+        modal.style.top = "0";
+        modal.style.width = "100vw";
+        modal.style.height = "100vh";
+        modal.style.background = "#0008";
+        modal.style.zIndex = "9999";
+        modal.style.display = "flex";
+        modal.style.alignItems = "center";
+        modal.style.justifyContent = "center";
+
+        const box = document.createElement("div");
+        box.style.background = "#fff";
+        box.style.padding = "24px";
+        box.style.borderRadius = "12px";
+        box.style.maxWidth = "500px";
+        box.style.boxShadow = "0 2px 12px #0003";
+        box.style.maxHeight = "80vh";
+        box.style.overflowY = "auto";
+        box.style.position = "relative"; // For absolute positioning of the X
+
+        box.innerHTML += `<h3 style="margin-top:0;">Your Properties</h3>`;
+
+        // Add X close button at the top right (after innerHTML)
+        const xBtn = document.createElement("button");
+        xBtn.textContent = "×";
+        xBtn.style.position = "absolute";
+        xBtn.style.top = "10px";
+        xBtn.style.right = "16px";
+        xBtn.style.background = "transparent";
+        xBtn.style.border = "none";
+        xBtn.style.fontSize = "1.6em";
+        xBtn.style.cursor = "pointer";
+        xBtn.onclick = () => document.body.removeChild(modal);
+        box.appendChild(xBtn);
+
+        Object.keys(groups).forEach(group => {
+            const groupDiv = document.createElement("div");
+            groupDiv.style.marginBottom = "18px";
+            groupDiv.innerHTML = `<div style="font-weight:bold; margin-bottom:4px;">${group.replace(/\b\w/g, c => c.toUpperCase())}</div>`;
+
+            // Only check for color groups (not railroads/utilities)
+            const colorProps = board.filter(
+                sq => sq.realEstateType === "property" && sq.colorGroup === group
+            );
+            let canDevelop = false;
+            let buildingCost = null;
+            if (colorProps.length > 0) {
+                // Use the new countSet method
+                const groupProperty = groups[group].find(p => p.realEstateType === "property");
+                const colorGroup = groupProperty ? groupProperty.colorGroup : null;
+                const allOwned = colorGroup ? (player.countSet(colorGroup) === 0) : false;
+                canDevelop = allOwned && colorProps.some(p => !p.hasSkyscraper);
+                buildingCost = colorProps[0].buildingCost;
+            }
+
+            groups[group].forEach(prop => {
+                const row = document.createElement("div");
+                row.style.display = "flex";
+                row.style.alignItems = "center";
+                row.style.marginBottom = "6px";
+                row.innerHTML = `<span style="flex:1; margin-right:16px;">${prop.name}</span>`;
+
+                // Only show develop button for properties and railroads
+                if (prop.realEstateType === "property") {
+                    // Enforce even building
+                    const groupProps = groups[group].filter(p => p.realEstateType === "property");
+                    const minHouses = Math.min(...groupProps.map(p => p.houses || 0));
+                    const minHotels = Math.min(...groupProps.map(p => p.hasHotel ? 1 : 0));
+                    const minSkyscrapers = Math.min(...groupProps.map(p => p.hasSkyscraper ? 1 : 0));
+
+                    let canBuild = false;
+                    let nextDev = "";
+                    if (!prop.hasHotel && !prop.hasSkyscraper && (prop.houses || 0) < 4) {
+                        canBuild = canDevelop && (prop.houses || 0) === minHouses && groupProps.every(p => (p.houses || 0) <= 4);
+                        nextDev = `House (${buildingCost})`;
+                    } else if (
+                        !prop.hasHotel &&
+                        (prop.houses || 0) === 4 &&
+                        groupProps.every(p => (p.houses === 4 || p.hasHotel || p.hasSkyscraper))
+                    ) {
+                        canBuild = canDevelop;
+                        nextDev = `Hotel (${buildingCost})`;
+                    } else if (!prop.hasSkyscraper && prop.hasHotel && groupProps.every(p => (p.hasHotel || p.hasSkyscraper))) {
+                        canBuild = canDevelop;
+                        nextDev = `Skyscraper (${buildingCost})`;
+                    }
+
+                    let reason = "";
+                    if (!canDevelop) {
+                        reason = "You must own all properties in this color group to develop.";
+                    } else if (player.bank < buildingCost) {
+                        reason = "Not enough money to develop.";
+                    } else if (!canBuild) {
+                        reason = "You must build evenly across all properties in this group.";
+                    }
+
+                    const devBtn = document.createElement("button");
+                    devBtn.textContent = canBuild ? `Develop ${nextDev}` : "Develop";
+                    devBtn.disabled = !canBuild || player.bank < buildingCost;
+                    devBtn.style.opacity = devBtn.disabled ? "0.5" : "1";
+                    devBtn.style.cursor = devBtn.disabled ? "not-allowed" : "pointer";
+                    if (devBtn.disabled && reason) devBtn.title = reason;
+                    devBtn.onclick = () => {
+                        if (devBtn.disabled) return;
+                        if (player.bank < buildingCost) {
+                            alert("Not enough money to develop!");
+                            return;
+                        }
+                        // Actually develop the property using its method
+                        if (prop.develop && prop.develop()) {
+                            player.bank -= buildingCost;
+                            if (typeof prop.renderDevelopment === "function") {
+                                prop.renderDevelopment();
+                            }
+                            this.updateChatMessage &&
+                                this.updateChatMessage(`${player.username} developed ${prop.name}!`);
+                            document.body.removeChild(modal);
+                            this.showRealEstateList(player, board);
+                        } else {
+                            alert("Unable to develop this property.");
+                        }
+                    };
+                    row.appendChild(devBtn);
+                } else if (prop.realEstateType === "railroad") {
+                    // Get all railroads from the board
+                    const canBuildDepot = !prop.hasDepot && player.bank >= 100;
+
+                    let reason = "";
+                    if (prop.hasDepot) {
+                        reason = "Depot already built on this railroad.";
+                    } else if (player.bank < 100) {
+                        reason = "Not enough money to build depot.";
+                    }
+
+                    const depotBtn = document.createElement("button");
+                    depotBtn.textContent = canBuildDepot ? "Develop ($100)" : "Develop";
+                    depotBtn.disabled = !canBuildDepot;
+                    depotBtn.style.opacity = depotBtn.disabled ? "0.5" : "1";
+                    depotBtn.style.cursor = depotBtn.disabled ? "not-allowed" : "pointer";
+                    if (depotBtn.disabled && reason) depotBtn.title = reason;
+                    depotBtn.onclick = () => {
+                        if (depotBtn.disabled) return;
+                        if (player.bank < 100) {
+                            alert("Not enough money to build depot!");
+                            return;
+                        }
+                        // Actually build the depot using its method
+                        if (prop.buildDepot && prop.buildDepot()) {
+                            if (typeof prop.renderDevelopment === "function") {
+                                prop.renderDevelopment();
+                            }
+                            this.updateChatMessage &&
+                                this.updateChatMessage(`${player.username} built a depot on ${prop.name}!`);
+                            document.body.removeChild(modal);
+                            this.showRealEstateList(player, board);
+                        } else {
+                            alert("Unable to build depot.");
+                        }
+                    };
+                    row.appendChild(depotBtn);
+                }
+                groupDiv.appendChild(row);
+            });
+            box.appendChild(groupDiv);
+        });
+
+        // Bottom close button (optional, keep for accessibility)
+        const closeBtn = document.createElement("button");
+        closeBtn.textContent = "Close";
+        closeBtn.style.marginTop = "12px";
+        closeBtn.onclick = () => document.body.removeChild(modal);
+        box.appendChild(closeBtn);
+
+        modal.appendChild(box);
+        document.body.appendChild(modal);
     }
 }
 

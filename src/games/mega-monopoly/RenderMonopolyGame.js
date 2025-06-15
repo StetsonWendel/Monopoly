@@ -22,7 +22,14 @@ class RenderMonopolyGame {
     }
 
   createBoardObjects(boardData, positions, cells, size) {
-    // console.log("boardData length:", boardData.length, "positions length:", positions.length);
+    // Count properties in each color group
+    const colorGroupCounts = {};
+    boardData.forEach(sq => {
+        if (sq.type === "property" && sq.color) {
+            colorGroupCounts[sq.color] = (colorGroupCounts[sq.color] || 0) + 1;
+        }
+    });
+
     return boardData.map((sq, idx) => {
       const pos = positions[idx];
       if (!pos) {
@@ -53,7 +60,8 @@ class RenderMonopolyGame {
             colorGroup: sq.color,
             buildingCost: sq.buildingCost,
             cell,
-            realEstateType: "property" 
+            realEstateType: "property",
+            numInSet: colorGroupCounts[sq.color] || 0 // <-- add this line
           });
         case "railroad":
           return new RailroadSpace({

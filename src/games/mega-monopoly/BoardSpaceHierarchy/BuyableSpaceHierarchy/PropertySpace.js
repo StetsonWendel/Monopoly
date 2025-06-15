@@ -1,17 +1,29 @@
 const BuyableSpace = require('../BuyableSpace');
 
 class PropertySpace extends BuyableSpace {
-    constructor({ pos, name, edge, price, rentArray, colorGroup, buildingCost, cell }) {
+    constructor({ pos, name, edge, price, rentArray, colorGroup, buildingCost, cell, numInSet }) {
         super({ pos, name, edge, price, img: null, colorGroup, cell, realEstateType: "property" });
         this.rentArray = rentArray;
         this.houses = 0;
         this.hasHotel = false;
         this.hasSkyscraper = false;
         this.buildingCost = buildingCost;
+        this.numInSet = numInSet;
     }
 
-    calculateRent() {
-        if (this.hasSkyscraper) {
+    calculateRent(board) {
+        // If property is undeveloped (no houses, no hotel, no skyscraper)
+        if (!this.hasSkyscraper && !this.hasHotel && (this.houses === 0 || this.houses === undefined)) {
+            if (this.owner && typeof this.owner.countSet === "function") {
+                const setStatus = this.owner.countSet(this.colorGroup, board);
+                if (setStatus === 0) {
+                    return this.rentArray[0] * 3; // Tripled rent
+                } else if (setStatus === 1) {
+                    return this.rentArray[0] * 2; // Doubled rent
+                }
+            }
+            return this.rentArray[0]; // Base rent
+        } else if (this.hasSkyscraper) {
             return this.rentArray[5]; // Skyscraper rent
         } else if (this.hasHotel) {
             return this.rentArray[4]; // Hotel rent
@@ -60,41 +72,64 @@ class PropertySpace extends BuyableSpace {
 
     // Untouched method to handle the purchase of this property by a player
     develop() {
-        if (this.hasHotel) return false;
+        if (this.hasSkyscraper) return false;
 
-        if (this.houses < 4) {
+        if (this.houses < 4 && this.hasHotel === false) {
             this.houses++;
-        } else {
-            this.houses = 0;
+        } else if (this.hasHotel === false) {
             this.hasHotel = true;
+        } else {
+            this.hasSkyscraper = true;
         }
 
-        console.log(`${this.name} developed: ${this.hasHotel ? "Hotel" : this.houses + " houses"}`);
+        // console.log(`${this.name} developed: ${this.hasHotel ? "Hotel" : this.houses + " houses"}`);
         return true;
     }
 
 
 
-
-
-
-
-
-    
     // Untouched Method made to render upgrades on the board.
     renderDevelopment() {
-        // Optional: Display house/hotel count on board
-        const devDiv = document.createElement("div");
-        devDiv.style.position = "absolute";
-        devDiv.style.bottom = "5px";
-        devDiv.style.right = "5px";
-        devDiv.style.fontSize = "0.9em";
-        devDiv.style.color = "green";
-        devDiv.style.zIndex = "2";
+        if (!this.cell) return;
 
-        devDiv.textContent = this.hasHotel ? "🏨" : "🏠".repeat(this.houses);
-        this.cell.appendChild(devDiv);
+        // Always use the color bar created by BuyableSpace
+        let colorBar = this.cell.querySelector('.property-color-bar');
+        if (!colorBar) return; // If for some reason it's missing, just exit
+
+        // Remove any previous dev icon in the color bar
+        const oldDev = colorBar.querySelector('.dev-icon');
+        if (oldDev) colorBar.removeChild(oldDev);
+
+        // Create the dev icon
+        const devDiv = document.createElement("div");
+        devDiv.className = "dev-icon";
+        // devDiv.style.marginRight = "6px";
+        devDiv.style.fontSize = "2em";
+        devDiv.style.color = "green";
+        devDiv.style.zIndex = "4";
+        devDiv.style.background = "transparent";
+
+        // Show skyscraper first, then hotel, then houses
+        if (this.hasSkyscraper) {
+            devDiv.textContent = "🏢";
+            devDiv.style.fontSize = "3em";
+            devDiv.style.marginTop = "-23px";
+            devDiv.style.textAlign = "center";
+        } else if (this.hasHotel) {
+            devDiv.textContent = "🏨";
+            devDiv.style.fontSize = "2.5em";
+            devDiv.style.marginTop = "-13px";
+            devDiv.style.textAlign = "center";
+        } else if (this.houses > 0) {
+            devDiv.textContent = "🏠".repeat(this.houses);
+            devDiv.style.marginTop = "-3px";
+        } else {
+            devDiv.textContent = "";
+        }
+
+        colorBar.appendChild(devDiv);
     }
+
 }
 
 module.exports = PropertySpace;

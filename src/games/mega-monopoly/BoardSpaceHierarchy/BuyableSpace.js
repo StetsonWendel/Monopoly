@@ -39,6 +39,7 @@ class BuyableSpace extends BoardSpace {
 
     renderColorBar() {
         const colorBar = document.createElement("div");
+        colorBar.className = "property-color-bar"; // <-- Add this line!
         colorBar.style.background = this.colorGroup;
         colorBar.style.border = "1px solid #000";
         if (this.edge === "top" || this.edge === "bottom") {

@@ -45,8 +45,39 @@ class RailroadSpace extends BuyableSpace {
         if (!this.owner || this.owner.money < 100) return false; // Not enough money
         this.owner.money -= 100;
         this.hasDepot = true;
-        console.log(`${this.name} depot built by ${this.owner.name}`);
+        // console.log(`${this.name} depot built by ${this.owner.name}`);
         return true;
+    }
+
+    renderDevelopment() {
+        if (!this.cell) return;
+
+        // Always use the color bar created by BuyableSpace
+        let colorBar = this.cell.querySelector('.property-color-bar');
+        if (!colorBar) return; // If for some reason it's missing, just exit
+
+        // Remove any previous dev icon in the color bar
+        const oldDev = colorBar.querySelector('.dev-icon');
+        if (oldDev) colorBar.removeChild(oldDev);
+
+        // Create the dev icon
+        const devDiv = document.createElement("div");
+        devDiv.className = "dev-icon";
+        devDiv.style.marginRight = "0";
+        devDiv.style.marginTop = "-22px";
+        devDiv.style.fontSize = "3em";
+        devDiv.style.color = "green";
+        devDiv.style.zIndex = "4";
+        devDiv.style.background = "transparent";
+        devDiv.style.textAlign = "center";
+
+        if (this.hasDepot) {
+            devDiv.textContent = "🏛️";
+        } else {
+            devDiv.textContent = "";
+        }
+
+        colorBar.appendChild(devDiv);
     }
 }
 

@@ -9,14 +9,14 @@ const communityChestCards = require('./community-chest-cards');
 const busTicketCards = require('./bus-ticket-cards');
 
 class SinglePlayerGame {
-    constructor(container, playersInfo, boardData) { // <-- add boardData param
+    constructor(container, playersInfo) { // <-- add boardData param
         this.container = container;
         this.whosTurn = 0;
         this.players = playersInfo.map(p => new Player(p));
 
         // Rendering and board creation
         this.renderGame = new RenderMonopolyGame(this.players);
-        this.board = this.renderGame.renderBoard(boardData); // <-- pass boardData here
+        this.board = this.renderGame.renderBoard(); 
 
         // Game logic
         this.logic = new MonopolyBaseLogic(this.players, this.board);
@@ -122,7 +122,7 @@ class SinglePlayerGame {
 
         // Check for triples (all dice equal and d3 is a number)
         if (typeof roll.mega === "number" && roll.d1 === roll.d2 && roll.d2 === roll.mega) {
-            this.logic.chooseBoardPositionByClick(player, this.board, (landedSquare) => {
+            this.logic.moveTriples(player, this.board, (landedSquare) => {
                 this.render();
                 if (typeof landedSquare.onLand === "function") {
                     landedSquare.onLand(player, this);

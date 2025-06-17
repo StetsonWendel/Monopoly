@@ -1,10 +1,33 @@
-const MonopolySyncClient = require("./games/mega-monopoly/MonopolySyncClient");
 const { io } = require("socket.io-client");
-const socket = io("http://localhost:3000");
+const MonopolySyncClient = require("./games/mega-monopoly/Multiplayer/MonopolySyncClient");
+// Make sure MultiplayerGame is also required if not already
+const MultiplayerGame = require('./games/mega-monopoly/Multiplayer/MultiplayerGameClient');
+const SinglePlayerGame = require('./games/mega-monopoly/SinglePlayerGame'); // Assuming you have this
 
-// Import your game classes
-const SinglePlayerGame = require("./games/mega-monopoly/SinglePlayerGame");
-const MultiplayerGame = require("./games/mega-monopoly/MultiplayerGame");
+// Establish the ONE main socket connection
+const mainSocket = io("http://localhost:3000"); // Or your server URL
+// Remove global currentGameCode and myLobbyPlayerInfo if they are managed by the Launcher instance
+// let currentGameCode = null;
+// let myLobbyPlayerInfo = null;
+
+mainSocket.on("connect", () => {
+    console.log(`[Launcher GLOBAL] Connected to server with socket ID: ${mainSocket.id}`);
+});
+
+// --- Global Lobby Event Handlers (can be moved into Launcher or kept if simple) ---
+// It's generally cleaner to have all socket event handling that affects UI
+// within the class that manages that UI. However, for now, let's focus on fixing game start.
+// If these are kept global, ensure they don't conflict with Launcher instance logic.
+
+// mainSocket.on("hosted", (gc) => { ... }); // These might be better inside Launcher.setupSocket
+// mainSocket.on("joined", (gc) => { ... });
+// mainSocket.on("player-list", (players) => { ... });
+
+
+// REMOVE THE ENTIRE GLOBAL mainSocket.on("game-started", ...) HANDLER HERE
+// From: mainSocket.on("game-started", (data) => { ... });
+// To: }); // End of the old global handler
+
 
 class Launcher {
     constructor() {
@@ -15,7 +38,7 @@ class Launcher {
         this.joinMenu = document.getElementById('join-menu');
         this.playerSetupMenu = document.getElementById('player-setup-menu');
         this.waitingRoom = document.getElementById('waiting-room');
-        this.gameContainer = document.getElementById('game-container');
+        this.gameContainer = document.getElementById('game-container'); // This is the one to use
         this.gameSelect = document.getElementById('game-select');
         this.playerUsername = document.getElementById('player-username');
         this.gameCodeSpan = document.getElementById('game-code');
@@ -29,11 +52,11 @@ class Launcher {
         this.playerListDiv = document.getElementById('player-list');
 
         this.selectedGame = this.gameSelect.value;
-        this.currentGameInstance = null; // Will hold the SinglePlayerGame or MultiplayerGame instance
-        this.players = [];
+        this.currentGameInstance = null;
+        this.players = []; // This will be populated by player-list event
 
         this.setupUI();
-        this.setupSocket();
+        this.setupSocket(); // This will set up the "game-started" listener correctly
     }
 
     showMenu(menu) {
@@ -41,7 +64,11 @@ class Launcher {
             this.mainMenu, this.multiplayerMenu, this.hostMenu, this.joinMenu,
             this.playerSetupMenu, this.waitingRoom, this.gameContainer
         ].forEach(m => m.classList.add('hidden'));
-        menu.classList.remove('hidden');
+        if (menu) { // Ensure menu is not null/undefined
+            menu.classList.remove('hidden');
+        } else {
+            console.error("Attempted to show an undefined menu");
+        }
     }
 
     setupUI() {
@@ -61,12 +88,12 @@ class Launcher {
             const code = Math.random().toString(36).substring(2, 8).toUpperCase();
             this.gameCodeSpan.textContent = code;
             this.showMenu(this.hostMenu);
-            socket.emit("host-game", code);
-            socket.emit("set-username", {
+            mainSocket.emit("host-game", code);
+            mainSocket.emit("set-username", {
                 gameCode: code,
                 username: this.playerUsername.value.trim().substring(0, 16)
             });
-            socket.emit("set-color", {
+            mainSocket.emit("set-color", {
                 gameCode: code,
                 color: this.playerColor.value
             });
@@ -90,12 +117,12 @@ class Launcher {
         document.getElementById('join-confirm').onclick = () => {
             const code = this.joinCodeInput.value.trim().toUpperCase();
             if (code.length === 6) {
-                socket.emit("join-game", code);
-                socket.emit("set-username", {
+                mainSocket.emit("join-game", code);
+                mainSocket.emit("set-username", {
                     gameCode: code,
                     username: this.playerUsername.value.trim().substring(0, 16)
                 });
-                socket.emit("set-color", {
+                mainSocket.emit("set-color", {
                     gameCode: code,
                     color: this.playerColor.value
                 });
@@ -128,7 +155,7 @@ class Launcher {
 
         this.playerColor.onchange = () => {
             if (this.waitingGameCode.textContent) {
-                socket.emit("set-color", {
+                mainSocket.emit("set-color", {
                     gameCode: this.waitingGameCode.textContent,
                     color: this.playerColor.value
                 });
@@ -136,7 +163,7 @@ class Launcher {
         };
 
         this.startGameBtn.onclick = () => {
-            socket.emit("start-game", this.waitingGameCode.textContent);
+            mainSocket.emit("start-game", this.waitingGameCode.textContent);
         };
 
         this.waitingBackBtn.onclick = () => {
@@ -145,7 +172,7 @@ class Launcher {
     }
 
     setupSocket() {
-        socket.on("hosted", (gameCode) => {
+        mainSocket.on("hosted", (gameCode) => {
             this.waitingGameCode.textContent = gameCode;
             this.playerCountSpan.textContent = "1";
             this.showMenu(this.waitingRoom);
@@ -153,84 +180,93 @@ class Launcher {
             this.setFirstAvailableColor();
         });
 
-        socket.on("joined", (gameCode) => {
+        mainSocket.on("joined", (gameCode) => {
             this.waitingGameCode.textContent = gameCode;
             this.showMenu(this.waitingRoom);
-            this.startGameBtn.classList.add('hidden');
+            this.startGameBtn.classList.add('hidden'); // Non-hosts shouldn't see start button
             this.setFirstAvailableColor();
         });
 
-        socket.on("player-joined", (playerCount) => {
-            this.playerCountSpan.textContent = playerCount;
+        mainSocket.on("player-joined", (playerCount) => {
+            if (this.playerCountSpan) this.playerCountSpan.textContent = playerCount;
         });
 
-        socket.on("player-list", (playersList) => {
-            this.players = playersList;
-            this.playerListDiv.innerHTML = `
-                <h3>Players:</h3>
-                <ul>
-                    ${this.players.map((p, i) =>
-                        `<li>
-                            <strong>${p.username ? p.username : `Player ${i + 1}`}</strong>
-                            <span style="color:${p.color || 'black'};margin-left:8px;">
-                                ${p.color || "No color"}
-                            </span>
-                        </li>`
-                    ).join("")}
-                </ul>
-            `;
-            const myPlayer = this.players.find(p => p.id === socket.id);
+        mainSocket.on("player-list", (playersList) => {
+            this.players = playersList; // Store the latest player list
+            if (this.playerListDiv) {
+                this.playerListDiv.innerHTML = `
+                    <h3>Players:</h3>
+                    <ul>
+                        ${this.players.map((p, i) =>
+                            `<li>
+                                <strong>${p.username ? p.username : `Player ${i + 1}`}</strong>
+                                <span style="color:${p.color || 'black'};margin-left:8px;">
+                                    ${p.color || "No color"}
+                                </span>
+                            </li>`
+                        ).join("")}
+                    </ul>
+                `;
+            }
+            const myPlayer = this.players.find(p => p.id === mainSocket.id);
             const myColor = myPlayer ? myPlayer.color : null;
             const takenColors = this.players
                 .map(p => p.color)
                 .filter(color => color && color !== myColor);
-            Array.from(this.playerColor.options).forEach(option => {
-                option.disabled = takenColors.includes(option.value);
-            });
-            if (myColor && this.playerColor.value !== myColor) {
-                this.playerColor.value = myColor;
+            
+            if (this.playerColor) {
+                Array.from(this.playerColor.options).forEach(option => {
+                    option.disabled = takenColors.includes(option.value);
+                });
+                if (myColor && this.playerColor.value !== myColor) {
+                    this.playerColor.value = myColor;
+                }
             }
         });
 
-        socket.on("game-started", () => {
-            this.showMenu(this.gameContainer);
+        // THIS IS THE CORRECT "game-started" HANDLER
+        mainSocket.on("game-started", (data) => {
+            console.log(`[Launcher class] Received "game-started" for game ${data.gameCode} with players:`, data.players);
 
-            // Create the sync client for this game
-            const syncClient = new MonopolySyncClient(
-                "http://localhost:3000", // or your server URL
-                this.waitingGameCode.textContent,
-                this.players.map(p => p.id),
-                /* boardLength */ 40, // or whatever your board length is
-                /* propertyCount */ 28 // or however many properties you have
-            );
+            if (data.gameCode && data.players) {
+                this.players = data.players; 
 
-            this.currentGameInstance = new MultiplayerGame(
-                this.gameContainer,
-                this.players,
-                syncClient,
-                this.waitingGameCode.textContent,
-                socket.id
-            );
+                this.showMenu(this.gameContainer); 
+
+                const syncClientInstance = new MonopolySyncClient(
+                    mainSocket,       
+                    data.gameCode,
+                    this.players.map(p => p.id), 
+                    40,               
+                    28                
+                );
+                console.log("[Launcher class] MonopolySyncClient instance created with socket:", syncClientInstance.socket.id);
+
+                // **** ADD THIS LINE ****
+                syncClientInstance.joinMonopolyGame(); // Tell the client to emit "join-monopoly"
+
+                if (!this.gameContainer) {
+                    console.error("[Launcher class] Game container (this.gameContainer) is not found!");
+                    return;
+                }
+                
+                this.currentGameInstance = new MultiplayerGame(
+                    this.gameContainer,   
+                    this.players,         
+                    syncClientInstance,
+                    data.gameCode,
+                    mainSocket.id
+                );
+                console.log("[Launcher class] MultiplayerGame instance created.");
+            } else {
+                console.error("[Launcher class] 'game-started' event received with missing data:", data);
+            }
         });
     }
 
     setFirstAvailableColor() {
-        socket.once("player-list", (players) => {
-            const myPlayer = players.find(p => p.id === socket.id);
-            const myColor = myPlayer ? myPlayer.color : null;
-            const takenColors = players
-                .map(p => p.color)
-                .filter(color => color && color !== myColor);
-            const colorOptions = Array.from(this.playerColor.options).map(opt => opt.value);
-            const firstAvailable = colorOptions.find(c => !takenColors.includes(c)) || colorOptions[0];
-            if (this.playerColor.value !== firstAvailable) {
-                this.playerColor.value = firstAvailable;
-                socket.emit("set-color", {
-                    gameCode: this.waitingGameCode.textContent,
-                    color: firstAvailable
-                });
-            }
-        });
+        // ... your existing setFirstAvailableColor ...
+        // Ensure it uses mainSocket correctly if it's not already.
     }
 }
 

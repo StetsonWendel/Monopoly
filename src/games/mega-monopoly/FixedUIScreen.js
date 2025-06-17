@@ -8,6 +8,7 @@ class FixedUIScreen {
         this.callbacks = callbacks;
         this.render();
         this.attachHandlers();
+        this.endTurnButton = document.getElementById('end-turn-btn'); // Make sure this ID matches your HTML
     }
 
     render() {
@@ -170,6 +171,15 @@ class FixedUIScreen {
                 <span style="float:right;">$${p.bank}</span>
             </div>`
         ).join("");
+    }
+
+    enableEndTurnButton(enable) {
+        if (this.endTurnButton) {
+            this.endTurnButton.disabled = !enable;
+            console.log(`[FixedUIScreen] End Turn button ${enable ? 'enabled' : 'disabled'}.`);
+        } else {
+            console.warn("[FixedUIScreen] End Turn button not found in enableEndTurnButton.");
+        }
     }
 
     updateChatMessage(message) {

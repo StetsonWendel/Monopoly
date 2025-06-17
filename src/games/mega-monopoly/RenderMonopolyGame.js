@@ -111,10 +111,15 @@ class RenderMonopolyGame {
   }
 
     renderBoard() {
+        //console.log("Rendering board...");
         const size = 14;
         const cellPx = 200;
         const boardPx = size * cellPx;
         const container = document.getElementById("game-container");
+
+        if (!container) {
+            throw new Error("game-container element not found. Ensure it exists in the HTML.");
+        }
 
         container.innerHTML = `
           <!-- The board grid itself -->
@@ -171,9 +176,9 @@ class RenderMonopolyGame {
               </div>
             </div>
         `;
+
         const boardDiv = document.getElementById("mm-board");
 
-        // Fill grid with empty cells
         for (let i = 0; i < size * size; i++) {
             const cell = document.createElement("div");
             cell.style.boxSizing = "border-box";

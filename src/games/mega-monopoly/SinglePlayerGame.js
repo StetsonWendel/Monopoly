@@ -33,7 +33,58 @@ class SinglePlayerGame {
             onQuit: () => { window.location.reload(); },
             onTrade: () => this.handleTrade(),
             onSave: () => { /* save game logic */ },
-            onViewRealEstate: () => this.fixedUI.showRealEstateList(this.players[this.whosTurn], this.board)
+            onViewRealEstate: () => {
+                const currentPlayer = this.players[this.whosTurn];
+                this.fixedUI.showRealEstateList(
+                    currentPlayer,
+                    this.board,
+                    { // Action Handlers for Single Player
+                        onDevelop: (prop) => {
+                            // Use the property's develop method, which should use player.money and logic
+                            const result = prop.develop(currentPlayer, this.logic);
+                            if (result.success) {
+                                if (typeof prop.renderDevelopment === "function") prop.renderDevelopment(); // Client-side visual update
+                                this.fixedUI.updateChatMessage(`${currentPlayer.username} developed ${prop.name}.`);
+                                this.render(); // Re-render game state (e.g., player money)
+                                this.fixedUI.showRealEstateList(currentPlayer, this.board, /* pass handlers again to refresh modal */); // Refresh modal
+                            } else {
+                                alert(result.reason || "Cannot develop this property.");
+                            }
+                        },
+                        onUndevelop: (prop) => {
+                            const result = prop.undevelop(currentPlayer, this.logic);
+                            if (result.success) {
+                                if (typeof prop.renderDevelopment === "function") prop.renderDevelopment();
+                                this.fixedUI.updateChatMessage(`${currentPlayer.username} sold development on ${prop.name} for $${result.refund}.`);
+                                this.render();
+                                this.fixedUI.showRealEstateList(currentPlayer, this.board, /* pass handlers again */);
+                            } else {
+                                alert(result.reason || "Cannot undevelop.");
+                            }
+                        },
+                        onMortgage: (prop) => {
+                            const result = prop.mortgage(currentPlayer, this.logic);
+                            if (result.success) {
+                                this.fixedUI.updateChatMessage(`${currentPlayer.username} mortgaged ${prop.name} for $${result.amount}.`);
+                                this.render();
+                                this.fixedUI.showRealEstateList(currentPlayer, this.board, /* pass handlers again */);
+                            } else {
+                                alert(result.reason || "Cannot mortgage.");
+                            }
+                        },
+                        onUnmortgage: (prop) => {
+                            const result = prop.unmortgage(currentPlayer, this.logic);
+                            if (result.success) {
+                                this.fixedUI.updateChatMessage(`${currentPlayer.username} unmortgaged ${prop.name} for $${result.cost}.`);
+                                this.render();
+                                this.fixedUI.showRealEstateList(currentPlayer, this.board, /* pass handlers again */);
+                            } else {
+                                alert(result.reason || "Cannot unmortgage.");
+                            }
+                        }
+                    }
+                );
+            }
         });
 
         // Optionally, render other info
@@ -84,6 +135,9 @@ class SinglePlayerGame {
 
         modal.style.display = "flex";
 
+        // Disable "End Turn" button until the player rolls
+        this.fixedUI.enableEndTurnButton(false);
+
         // Remove previous handlers
         rollBtn.onclick = null;
         busBtn.onclick = null;
@@ -114,6 +168,9 @@ class SinglePlayerGame {
             roll = this.logic.rollDice();
         }
 
+        // Ensure logic has the latest roll for utility calculations if needed by onLand
+        this.logic.setLastRoll(roll);
+
         let d3 = 0;
         if (typeof roll.mega === "number") {
             d3 = roll.mega;
@@ -122,24 +179,35 @@ class SinglePlayerGame {
 
         // Check for triples (all dice equal and d3 is a number)
         if (typeof roll.mega === "number" && roll.d1 === roll.d2 && roll.d2 === roll.mega) {
-            this.logic.moveTriples(player, this.board, (landedSquare) => {
-                this.render();
-                if (typeof landedSquare.onLand === "function") {
-                    landedSquare.onLand(player, this);
+            this.fixedUI.updateChatMessage(`${player.username} rolled TRIPLLES! Choose any space to move to.`);
+            // Pass 'this' (SinglePlayerGame instance) as gameContext
+            this.logic.moveTriples(player, this, (chosenMonopolyIndex) => {
+                // Player has chosen a square. Now move the player.
+                player.position = chosenMonopolyIndex; // Directly set position
+                const landedSquare = this.board[player.position];
+                
+                this.fixedUI.updateChatMessage(`${player.username} moved to ${landedSquare.name} with triples.`);
+                this.render(); // Update token position
+
+                if (landedSquare && typeof landedSquare.onLand === "function") {
+                    landedSquare.onLand(player, this.logic, this);
                 }
-                // End turn after moving anywhere
+
+                // Enable "End Turn" button after triples
+                this.fixedUI.updateChatMessage(`${player.username} finished their move after rolling triples. Click "End Turn" to proceed.`);
+                this.fixedUI.enableEndTurnButton(true); // Allow the player to manually end their turn
             });
-            return;
+            return; // Stop further processing in rollDiceAndMove for triples
         }
 
         // Move player using MonopolyBaseLogic's method
         const landedSquare = this.logic.movePlayer(player, total);
 
         this.render();
-   
+
         // Call onLand
         if (typeof landedSquare.onLand === "function") {
-            landedSquare.onLand(player, this);
+            landedSquare.onLand(player, this.logic, this);
         }
 
         // Mr. Monopoly logic
@@ -148,28 +216,24 @@ class SinglePlayerGame {
                 this.render();
 
                 if (typeof nextSpace.onLand === "function") {
-                    nextSpace.onLand(player, this);
+                    nextSpace.onLand(player, this.logic, this);
                 }
                 // Move the chat message here:
                 this.fixedUI.updateChatMessage(
                     `${player.username} is moved by Mr. Monopoly to ${nextSpace.name}!`
                 );
+
+                // After Mr. Monopoly logic, check for doubles
+                this.handleTurnEndOrDoubles(roll, player);
             });
         } else if (roll.mega === "busTicket") {
             player.numBusTickets++;
+            this.fixedUI.updateChatMessage(`${player.username} received a Bus Ticket!`);
+            this.handleTurnEndOrDoubles(roll, player);
+        } else {
+            // If no special mega die logic, check for doubles
+            this.handleTurnEndOrDoubles(roll, player);
         }
-
-        // If doubles, let the player take another turn
-        if (roll.d1 === roll.d2) {
-            this.fixedUI.updateChatMessage(
-                `${player.username} rolled doubles and gets another turn!`
-            );
-            this.startTurn();
-        }
-
-        this.fixedUI.updateChatMessage(
-            `${player.username} rolled ${roll.d1} + ${roll.d2} (Mega: ${roll.mega}) and moved to ${landedSquare.name}`
-        );
     }
 
 
@@ -209,6 +273,34 @@ class SinglePlayerGame {
                 }
             );
         });
+    }
+
+    handleTurnEndOrDoubles(roll, player) {
+        if (roll.d1 === roll.d2 && !(typeof roll.mega === "number" && roll.d1 === roll.d2 && roll.d2 === roll.mega)) {
+            // Player rolled doubles
+            this.fixedUI.updateChatMessage(
+                `${player.username} rolled doubles and gets another turn!`
+            );
+
+            if (!player.inJail) { // Only grant another turn if not getting out of jail with doubles
+                player.consecutiveDoubles++;
+                if (player.consecutiveDoubles === 3) {
+                    this.fixedUI.updateChatMessage(`${player.username} rolled doubles three times! Go to Jail.`);
+                    this.logic.sendPlayerToJail(player);
+                    this.fixedUI.enableEndTurnButton(true); // Allow ending turn after going to jail
+                } else {
+                    this.startTurn(); // Automatically start another turn
+                }
+            } else {
+                // If they got out of jail with doubles, their turn usually ends.
+                player.consecutiveDoubles = 0; // Reset doubles count
+                this.fixedUI.enableEndTurnButton(true); // Allow ending turn
+            }
+        } else {
+            // Not doubles, enable "End Turn" button
+            player.consecutiveDoubles = 0; // Reset doubles count
+            this.fixedUI.enableEndTurnButton(true);
+        }
     }
 }
 

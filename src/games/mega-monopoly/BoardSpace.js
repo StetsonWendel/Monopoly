@@ -65,11 +65,16 @@ class BoardSpace {
     /**
      * Called when a player lands on this space.
      * Override in subclasses for custom behavior.
-     * @param {object} player - The player object landing on the space.
+     * @param {Player} player - The player object landing on the space.
+     * @param {MonopolyBaseLogic} logic - The game logic instance.
+     * @param {SinglePlayerGame | {io: SocketIO.Server, gameCode: string, socketId: string}} context - 
+     *        In single-player, the SinglePlayerGame instance.
+     *        In multiplayer, an object with server IO context.
      */
-    onLand(player) {
-        // Default: do nothing
-        console.log("Error: BoardSpace onLand called for", this.name);
+    onLand(player, logic, context) {
+        // Default: do nothing or log an error if a space that should have behavior doesn't.
+        // Consider if this base method should always log an error if not overridden by a meaningful space type.
+        console.warn(`[BoardSpace] Base onLand called for ${this.name}. Player: ${player.username}. This space type might be missing specific onLand logic.`);
     }
 }
 

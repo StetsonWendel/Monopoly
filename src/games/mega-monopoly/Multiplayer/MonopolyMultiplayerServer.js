@@ -273,6 +273,111 @@ class MonopolyMultiplayerServer {
             }
         });
         
+        // NEW: Handle client's decision to buy/decline property
+        socket.on("buy-property-decision", ({ gameCode: clientGameCode, propertyPos, accepted }) => {
+            if (clientGameCode !== instanceGameCode) return;
+            const game = games[instanceGameCode];
+            if (!game || !game.board[propertyPos] || !game.serverLogic) return;
+
+            const property = game.board[propertyPos];
+            const player = game.players.find(p => p.id === socket.id); // Player who made the decision
+
+            if (!player || player.id !== game.players[game.currentTurn].id) {
+                console.warn(`[MonopolyServer ${instanceGameCode}] "buy-property-decision" from non-current player or invalid player.`);
+                return;
+            }
+
+            if (accepted) {
+                if (player.money >= property.price && property.owner === null) {
+                    const purchased = game.serverLogic.purchaseProperty(player, property);
+                    if (purchased) {
+                        this.io.to(instanceGameCode).emit("property-updated", {
+                            pos: property.pos,
+                            ownerId: player.id,
+                            isMortgaged: property.isMortgaged // Though it shouldn't be mortgaged on purchase
+                        });
+                        this.io.to(instanceGameCode).emit("player-data-updated", { playerId: player.id, money: player.money });
+                        this.io.to(instanceGameCode).emit("game-message", `${player.username} bought ${property.name}.`);
+                    } else {
+                         socket.emit("action-failed", { reason: "Could not buy property (e.g. already owned, insufficient funds server-side)."});
+                    }
+                } else {
+                     socket.emit("action-failed", { reason: "Cannot afford property or already owned."});
+                }
+            } else { // Declined or couldn't afford initially and server offered
+                this.io.to(instanceGameCode).emit("game-message", `${player.username} declined to buy ${property.name}. Starting auction.`);
+                game.serverLogic.startAuction(property, player, this.io, instanceGameCode);
+            }
+        });
+
+        // PROPERTY MANAGEMENT HANDLERS
+        const propertyActionHandler = (actionType, eventName) => {
+            socket.on(eventName, ({ gameCode: clientGameCode, propertyPos, playerId }) => {
+                if (clientGameCode !== instanceGameCode || playerId !== socket.id) return;
+                const game = games[instanceGameCode];
+                if (!game || !game.board[propertyPos] || !game.serverLogic) {
+                    socket.emit("action-failed", { reason: "Game or property not found." });
+                    return;
+                }
+
+                const property = game.board[propertyPos];
+                const player = game.players.find(p => p.id === socket.id);
+
+                if (!player || player.id !== game.players[game.currentTurn].id) {
+                    socket.emit("action-failed", { reason: "Not your turn or player invalid." });
+                    return;
+                }
+                if (property.owner !== player) {
+                    socket.emit("action-failed", { reason: "You do not own this property." });
+                    return;
+                }
+
+                let result;
+                switch (actionType) {
+                    case "develop":
+                        result = property.develop(player, game.serverLogic);
+                        break;
+                    case "undevelop":
+                        result = property.undevelop(player, game.serverLogic);
+                        break;
+                    case "mortgage":
+                        result = property.mortgage(player, game.serverLogic);
+                        break;
+                    case "unmortgage":
+                        result = property.unmortgage(player, game.serverLogic);
+                        break;
+                    default:
+                        socket.emit("action-failed", { reason: "Unknown property action." });
+                        return;
+                }
+
+                if (result && result.success) {
+                    this.io.to(instanceGameCode).emit("property-updated", {
+                        pos: property.pos,
+                        ownerId: property.owner ? property.owner.id : null,
+                        isMortgaged: property.isMortgaged,
+                        houses: property.houses,
+                        hasHotel: property.hasHotel,
+                        hasSkyscraper: property.hasSkyscraper,
+                        hasDepot: property.hasDepot // For railroads
+                    });
+                    this.io.to(instanceGameCode).emit("player-data-updated", { playerId: player.id, money: player.money });
+                    this.io.to(instanceGameCode).emit("game-message", `${player.username} ${actionType}ed ${property.name}.`);
+                } else {
+                    socket.emit("action-failed", { reason: result.reason || `Failed to ${actionType} property.` });
+                }
+            });
+        };
+
+        propertyActionHandler("develop", "develop-property");
+        propertyActionHandler("undevelop", "undevelop-property");
+        propertyActionHandler("mortgage", "mortgage-property");
+        propertyActionHandler("unmortgage", "unmortgage-property");
+
+
+        // TODO: Add handlers for "auction-place-bid" and "auction-pass" from clients
+        // These will interact with game.serverLogic.auctionData and emit "auction-bid-update" or "auction-ended"
+
         socket._monopolyGameCode = instanceGameCode;
         socket._monopolyHandlersAttachedBy = this;
 

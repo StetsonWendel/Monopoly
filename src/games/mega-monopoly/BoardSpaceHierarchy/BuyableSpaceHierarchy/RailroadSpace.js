@@ -3,15 +3,23 @@ const BuyableSpace = require('../BuyableSpace');
 class RailroadSpace extends BuyableSpace {
     constructor({ pos, name, edge, price, cell, colorGroup = "black", realEstateType = "railroad" }) {
         super({ pos, name, edge, cell, price, colorGroup, realEstateType });
-        this.hasDepot = false; // Track if a depot has been built;
+        this.hasDepot = false;
     }
 
-    // Rent is 25 * (2 ^ (number of railroads owned by this.owner - 1))
-    calculateRent() {
-        if (!this.owner || typeof this.owner.countRailroads !== "function") return 25;
-        const numOwned = this.owner.countRailroads();
-        if (this.hasDepot) depotDouble = 2; else depotDouble = 1;
-        return 25 * Math.pow(2, Math.max(0, numOwned - 1)) * depotDouble;
+    /**
+     * Calculates rent for this railroad.
+     * @param {Player} playerLanded - The player who landed (not directly used here but good for consistency).
+     * @param {MonopolyBaseLogic} logic - The game logic instance.
+     * @returns {number} The calculated rent.
+     */
+    calculateRent(playerLanded, logic) {
+        if (!this.owner) return 25; // Should not happen if called correctly
+        const numOwned = logic.countPlayerRailroads(this.owner); // Use logic to count
+        let rent = 25 * Math.pow(2, Math.max(0, numOwned - 1));
+        if (this.hasDepot) {
+            rent *= 2;
+        }
+        return rent;
     }
 
     renderDeed() {
@@ -40,43 +48,39 @@ class RailroadSpace extends BuyableSpace {
         `;
     }
 
-    buildDepot() {
-        if (!this.owner) return false; // No owner
-        if (this.hasDepot) return false; // Depot already built
-        if (!this.owner || this.owner.money < 100) return false; // Not enough money
-        this.owner.money -= 100;
+    buildDepot(player, logic) { // Pass logic
+        if (!this.owner || this.owner.id !== player.id) return { success: false, reason: "Not your property."};
+        if (this.hasDepot) return { success: false, reason: "Depot already built."};
+        if (player.money < 100) return { success: false, reason: "Not enough money."}; // Depot cost
+        
+        // Potentially add logic check: player must own all railroads to build depot?
+        // if (logic.countPlayerRailroads(player) < logic.getTotalRailroadsOnBoard()) {
+        //    return { success: false, reason: "Must own all railroads to build a depot." };
+        // }
+
+        player.money -= 100;
         this.hasDepot = true;
-        // console.log(`${this.name} depot built by ${this.owner.name}`);
-        return true;
+        return { success: true };
     }
 
-    /**
-     * Determines if this railroad can be developed (depot).
-     * @param {Object} player - The player attempting to develop.
-     * @returns {Object} { canBuild, reason }
-     */
-    canDevelop(player) {
-        const canBuildDepot = !this.hasDepot && player.bank >= 100;
-        let reason = "";
-        if (this.hasDepot) {
-            reason = "Depot already built on this railroad.";
-        } else if (player.bank < 100) {
-            reason = "Not enough money to build depot.";
-        }
-        return { canBuild: canBuildDepot, reason };
+    canDevelop(player, logic) { // Pass logic
+        if (this.realEstateType !== "railroad") return { canBuild: false, reason: "Not a railroad."};
+        if (this.hasDepot) return { canBuild: false, reason: "Depot already built." };
+        if (player.money < 100) return { canBuild: false, reason: "Not enough money.", buildingCost: 100 };
+        
+        // Optional: Check if player owns all railroads
+        // const ownsAllRailroads = logic.countPlayerRailroads(player) === logic.getTotalRailroadsOnBoard();
+        // if (!ownsAllRailroads) return { canBuild: false, reason: "Must own all railroads to build a depot."};
+
+        return { canBuild: true, nextDev: "Depot", reason: "", buildingCost: 100 };
     }
 
-    /**
-     * Sells back the depot for half price.
-     * @param {Object} player - The player attempting to undevelop.
-     * @returns {Object} { success, reason }
-     */
-    undevelop(player) {
+    undevelop(player, logic) { // Pass logic
         if (!this.hasDepot) {
-            return { success: false, reason: "No depot to sell on this railroad." };
+            return { success: false, reason: "No depot to sell." };
         }
         this.hasDepot = false;
-        player.bank += 50; // Half of $100
+        player.money += 50; // Half of $100 depot cost
         return { success: true, refund: 50 };
     }
 
@@ -110,6 +114,7 @@ class RailroadSpace extends BuyableSpace {
 
         colorBar.appendChild(devDiv);
     }
+    // onLand is inherited from BuyableSpace
 }
 
 module.exports = RailroadSpace;

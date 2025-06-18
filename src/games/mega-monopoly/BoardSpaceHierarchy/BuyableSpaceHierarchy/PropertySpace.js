@@ -8,28 +8,39 @@ class PropertySpace extends BuyableSpace {
         this.hasHotel = false;
         this.hasSkyscraper = false;
         this.buildingCost = buildingCost;
-        this.numInSet = numInSet;
+        this.numInSet = numInSet; // Number of properties in this color group
     }
 
-    calculateRent(board) {
-        // If property is undeveloped (no houses, no hotel, no skyscraper)
+    /**
+     * Calculates rent for this property.
+     * @param {Player} playerLanded - The player who landed on the space.
+     * @param {MonopolyBaseLogic} logic - The game logic instance.
+     * @returns {number} The calculated rent.
+     */
+    calculateRent(playerLanded, logic) {
+        if (!this.owner) return 0;
+
+        // If property is undeveloped
         if (!this.hasSkyscraper && !this.hasHotel && (this.houses === 0 || this.houses === undefined)) {
-            if (this.owner && typeof this.owner.countSet === "function") {
-                const setStatus = this.owner.countSet(this.colorGroup, board);
-                if (setStatus === 0) {
-                    return this.rentArray[0] * 3; // Tripled rent
-                } else if (setStatus === 1) {
-                    return this.rentArray[0] * 2; // Doubled rent
-                }
+            // Check if owner has a monopoly or near-monopoly on this color group
+            const ownsAllInSet = logic.playerOwnsAllInColorGroup(this.owner, this.colorGroup);
+            const ownsAllButOneInSet = logic.playerOwnsAllButOneInColorGroup(this.owner, this.colorGroup, this.numInSet);
+
+            if (ownsAllInSet) {
+                return this.rentArray[0] * 3; // Tripled rent for full set
+            } else if (ownsAllButOneInSet) {
+                return this.rentArray[0] * 2; // Doubled rent for all but one
             }
             return this.rentArray[0]; // Base rent
         } else if (this.hasSkyscraper) {
-            return this.rentArray[5]; // Skyscraper rent
+            return this.rentArray[6] || this.rentArray[5]; // Skyscraper rent (index 6 if exists, else 5)
         } else if (this.hasHotel) {
-            return this.rentArray[4]; // Hotel rent
-        } else {
-            return this.rentArray[this.houses]; // Rent based on number of houses
+            return this.rentArray[5] || this.rentArray[4]; // Hotel rent (index 5 if exists, else 4)
+        } else if (this.houses > 0 && this.houses <= 4) { // Rent for 1-4 houses
+             return this.rentArray[this.houses];
         }
+        // Fallback, though should be covered
+        return this.rentArray[0];
     }
 
     renderDeed() {
@@ -64,31 +75,28 @@ class PropertySpace extends BuyableSpace {
         `;
     }
 
-
-
-
-
-
-
-    // Untouched method to handle the purchase of this property by a player
-    develop() {
-        if (this.hasSkyscraper) return false;
-        this.owner.money -= this.buildingCost;
-        if (this.houses < 4 && this.hasHotel === false) {
-            this.houses++;
-        } else if (this.hasHotel === false) {
-            this.hasHotel = true;
-        } else {
-            this.hasSkyscraper = true;
+    develop(player, logic) { // Pass logic for any rule checks if needed
+        if (this.hasSkyscraper) return { success: false, reason: "Already has a skyscraper." };
+        if (player.money < this.buildingCost) return { success: false, reason: "Not enough money."};
+        
+        // Add logic here to check for even building rules if using MonopolyBaseLogic
+        if (!logic.canBuildEvenly(player, this, this.colorGroup)) {
+            return { success: false, reason: "Must build evenly across the color group." };
         }
 
-        // console.log(`${this.name} developed: ${this.hasHotel ? "Hotel" : this.houses + " houses"}`);
-        return true;
+        player.money -= this.buildingCost;
+        if (this.houses < 4 && !this.hasHotel) {
+            this.houses++;
+        } else if (!this.hasHotel) {
+            this.houses = 0; // Reset houses when building hotel
+            this.hasHotel = true;
+        } else { // Has hotel, building skyscraper
+            this.hasHotel = false; // Skyscraper replaces hotel
+            this.hasSkyscraper = true;
+        }
+        return { success: true };
     }
 
-
-
-    // Untouched Method made to render upgrades on the board.
     renderDevelopment() {
         if (!this.cell) return;
 
@@ -130,99 +138,84 @@ class PropertySpace extends BuyableSpace {
         colorBar.appendChild(devDiv);
     }
 
-    /**
-     * Determines if this property can be developed (house/hotel/skyscraper).
-     * @param {Object} player - The player attempting to develop.
-     * @param {Array} board - The full board array.
-     * @param {Object} groups - The grouped properties for the player.
-     * @returns {Object} { canBuild, nextDev, reason, buildingCost }
-     */
-    canDevelop(player, board, groups) {
+    canDevelop(player) { // Pass logic
         // Only for properties
-        const groupProps = groups[this.colorGroup].filter(p => p.realEstateType === "property");
-        const minHouses = Math.min(...groupProps.map(p => p.houses || 0));
+        console.log("Checking canDevelop for", this.name, "owned by", this.owner ? this.owner.username : "none");
+        if (this.realEstateType !== "property") return { canBuild: false, reason: "Not a developable property."};
+
+        const ownsAllInGroup = logic.playerOwnsAllInColorGroup(player, this.colorGroup);
+        if (!ownsAllInGroup) {
+            return { canBuild: false, reason: "You must own all properties in this color group to develop." };
+        }
+        if (player.money < this.buildingCost) {
+            return { canBuild: false, reason: "Not enough money.", buildingCost: this.buildingCost };
+        }
+
+        let nextDevStage = "";
+        let canBuildThisProperty = false;
+
+        if (!this.hasSkyscraper && !this.hasHotel && this.houses < 4) {
+            nextDevStage = `House (${this.houses + 1})`;
+            canBuildThisProperty = logic.canBuildEvenly(player, this, this.colorGroup, 'house');
+        } else if (!this.hasSkyscraper && !this.hasHotel && this.houses === 4) {
+            nextDevStage = "Hotel";
+            canBuildThisProperty = logic.canBuildEvenly(player, this, this.colorGroup, 'hotel');
+        } else if (!this.hasSkyscraper && this.hasHotel) {
+            nextDevStage = "Skyscraper";
+            canBuildThisProperty = logic.canBuildEvenly(player, this, this.colorGroup, 'skyscraper');
+        } else if (this.hasSkyscraper) {
+            return { canBuild: false, reason: "Already fully developed with a skyscraper." };
+        }
         
-        // Check if player owns all in set
-        const colorProps = board.filter(
-            sq => sq.realEstateType === "property" && sq.colorGroup === this.colorGroup
-        );
-        const allOwned = player.countSet(this.colorGroup) === 0;
-        const canDevelop = allOwned && colorProps.some(p => !p.hasSkyscraper);
-        const buildingCost = this.buildingCost;
-
-        let canBuild = false;
-        let nextDev = "";
-        if (!this.hasHotel && !this.hasSkyscraper && (this.houses || 0) < 4) {
-            canBuild = canDevelop && (this.houses || 0) === minHouses && groupProps.every(p => (p.houses || 0) <= 4);
-            nextDev = `House (${buildingCost})`;
-        } else if (
-            !this.hasHotel &&
-            (this.houses || 0) === 4 &&
-            groupProps.every(p => (p.houses === 4 || p.hasHotel || p.hasSkyscraper))
-        ) {
-            canBuild = canDevelop;
-            nextDev = `Hotel (${buildingCost})`;
-        } else if (!this.hasSkyscraper && this.hasHotel && groupProps.every(p => (p.hasHotel || p.hasSkyscraper))) {
-            canBuild = canDevelop;
-            nextDev = `Skyscraper (${buildingCost})`;
-        }
-
-        let reason = "";
-        if (!canDevelop) {
-            reason = "You must own all properties in this color group to develop.";
-        } else if (player.bank < buildingCost) {
-            reason = "Not enough money to develop.";
-        } else if (!canBuild) {
-            reason = "You must build evenly across all properties in this group.";
-        }
-
-        return { canBuild, nextDev, reason, buildingCost };
+        return {
+            canBuild: canBuildThisProperty,
+            nextDev: nextDevStage,
+            reason: canBuildThisProperty ? "" : "Must build evenly across the group.",
+            buildingCost: this.buildingCost
+        };
     }
 
-    /**
-     * Sells back a development (house/hotel/skyscraper) for half price.
-     * Ensures legal undevelop: cannot sell if this property is more than 1 above the lowest in the group.
-     * @param {Object} player - The player attempting to undevelop.
-     * @param {Array} board - The full board array.
-     * @param {Object} groups - The grouped properties for the player.
-     * @returns {Object} { success, reason }
-     */
-    undevelop(player, board, groups) {
-        const groupProps = groups[this.colorGroup].filter(p => p.realEstateType === "property");
-        // Find max and min development level in group
-        const devLevel = p => p.hasSkyscraper ? 6 : p.hasHotel ? 5 : (p.houses || 0);
-        const levels = groupProps.map(devLevel);
-        const thisLevel = devLevel(this);
-        const minLevel = Math.min(...levels);
-        const maxLevel = Math.max(...levels);
-
-        // Legal: can't undevelop if this is more than 1 above the lowest
-        if (thisLevel > minLevel + 1) {
-            return { success: false, reason: "You must sell evenly across the group (cannot have a property more than 1 above the lowest developed in the group)." };
+    undevelop(player, logic) { // Pass logic
+        // Logic for selling development evenly
+        if (!logic.canSellDevelopmentEvenly(player, this, this.colorGroup)) {
+            return { success: false, reason: "Must sell development evenly across the color group." };
         }
 
-        // Can't undevelop if nothing to sell
-        if (thisLevel === 0) {
-            return { success: false, reason: "No development to sell on this property." };
-        }
-
-        // Sell in reverse order: Skyscraper > Hotel > Houses
         let refund = 0;
         if (this.hasSkyscraper) {
-            this.hasSkyscraper = false;
+            this.hasSkyscraper = false; // Skyscraper becomes hotel
+            this.hasHotel = true;
             refund = Math.floor(this.buildingCost / 2);
         } else if (this.hasHotel) {
-            this.hasHotel = false;
+            this.hasHotel = false; // Hotel becomes 4 houses
+            this.houses = 4;
             refund = Math.floor(this.buildingCost / 2);
         } else if (this.houses > 0) {
             this.houses--;
             refund = Math.floor(this.buildingCost / 2);
+        } else {
+            return { success: false, reason: "No development to sell." };
         }
 
-        player.bank += refund;
+        player.money += refund;
         return { success: true, refund };
     }
 
+    playerOwnsColorGroup (player) {
+        let numOwned = 0;
+        for (let property of player.properties){
+            if (this.colorGroup === property.colorGroup) {
+                numOwned++;
+            }
+        }
+        if (numOwned === this.numInSet) {
+            return 0; // Player owns all properties in this color group
+        } else if (numOwned === this.numInSet - 1) {
+            return 1; // Player owns all but one property in this color group
+        } else {
+            return 2;
+        }
+    }
 }
 
 module.exports = PropertySpace;

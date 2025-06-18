@@ -5,12 +5,17 @@ class UtilitySpace extends BuyableSpace {
         super({ pos, name, edge, cell, price, colorGroup, realEstateType });
     }
 
-    // Rent is 4x dice roll if one utility owned, 10x if both owned by same player
-    calculateRent(diceRoll) {
-        if (!this.owner || typeof this.owner.countUtilities !== "function") return 0;
-        const numOwned = this.owner.countUtilities();
-        const multiplier = numOwned === 2 ? 10 : 4;
-        return diceRoll * multiplier;
+    // Rent is based on dice roll and number of utilities owned.
+    // This signature is fine as is.
+    calculateRent(diceRollTotal, playerLanded, logic) {
+        if (!this.owner) return 0;
+        const numOwned = logic.countPlayerUtilities(this.owner); // Use logic to count
+        
+        let multiplier = 4; // Default for 1 utility
+        if (numOwned === 2) multiplier = 10;
+        else if (numOwned === 3) multiplier = 20; // Assuming 3 utilities in your game for max multiplier
+
+        return diceRollTotal * multiplier;
     }
 
     renderDeed() {
@@ -38,16 +43,9 @@ class UtilitySpace extends BuyableSpace {
 
     }
 
-    onLand(player, diceRoll) {
-        if (!this.owner) {
-            this.offerPurchase(player);
-        } else if (this.owner !== player) {
-            const rent = this.calculateRent(diceRoll);
-            player.money -= rent;
-            this.owner.money += rent;
-            console.log(`${player.name} paid $${rent} rent to ${this.owner.name}`);
-        }
-    }
+    // onLand is inherited from BuyableSpace.
+    // The BuyableSpace.onLand method needs to correctly call this.calculateRent.
+    // It was updated to pass the roll for utilities.
 }
 
 module.exports = UtilitySpace;

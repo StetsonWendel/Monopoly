@@ -76,14 +76,17 @@ class MonopolySyncClient {
     proposeTrade(tradeObj) {
         this.socket.emit("propose-trade", { gameCode: this.gameCode, tradeObj });
     }
-    developProperty(propertyId, playerId) {
-        this.socket.emit("develop-property", { gameCode: this.gameCode, propertyId, playerId });
+    developProperty(propertyPos, playerId) { // propertyPos is correct
+        this.socket.emit("develop-property", { gameCode: this.gameCode, propertyPos, playerId });
     }
-    mortgageProperty(propertyId, playerId) {
-        this.socket.emit("mortgage-property", { gameCode: this.gameCode, propertyId, playerId });
+    undevelopProperty(propertyPos, playerId) {
+        this.socket.emit("undevelop-property", { gameCode: this.gameCode, propertyPos, playerId });
     }
-    unmortgageProperty(propertyId, playerId) {
-        this.socket.emit("unmortgage-property", { gameCode: this.gameCode, propertyId, playerId });
+    mortgageProperty(propertyPos, playerId) {
+        this.socket.emit("mortgage-property", { gameCode: this.gameCode, propertyPos, playerId });
+    }
+    unmortgageProperty(propertyPos, playerId) {
+        this.socket.emit("unmortgage-property", { gameCode: this.gameCode, propertyPos, playerId });
     }
 }
 

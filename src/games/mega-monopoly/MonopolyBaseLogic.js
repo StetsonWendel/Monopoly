@@ -1,11 +1,120 @@
 class MonopolyBaseLogic {
     constructor(players, board, chanceDeck, communityChestDeck, busTicketDeck) {
         this.players = players;
-        this.currentTurn = 0;
-        this.board = board;
+        this.board = board; // This should be the array of BoardSpace objects
         this.chanceDeck = chanceDeck;
         this.communityChestDeck = communityChestDeck;
         this.busTicketDeck = busTicketDeck;
+        this.lastRoll = null; // Add this to store the last roll
+        this.auctionData = null; // For managing auction state
+    }
+
+    setLastRoll(roll) {
+        this.lastRoll = roll;
+    }
+
+    getLastRoll() {
+        return this.lastRoll;
+    }
+
+    purchaseProperty(player, property) {
+        if (player.money >= property.price && property.owner === null) {
+            player.money -= property.price;
+            property.owner = player;
+            player.addRealEstate(property); // Make sure Player class has this method
+            console.log(`[Logic] ${player.username} purchased ${property.name}`);
+            return true;
+        }
+        console.log(`[Logic] ${player.username} failed to purchase ${property.name}`);
+        return false;
+    }
+
+    playerPaysRent(payer, recipient, amount) {
+        if (payer.money >= amount) {
+            payer.money -= amount;
+            recipient.money += amount;
+            console.log(`[Logic] ${payer.username} paid $${amount} to ${recipient.username}`);
+            return amount;
+        } else {
+            // Handle bankruptcy or insufficient funds - complex, for later
+            const amountPaid = payer.money;
+            recipient.money += payer.money;
+            payer.money = 0;
+            console.log(`[Logic] ${payer.username} paid $${amountPaid} (all money) to ${recipient.username}. Potential bankruptcy.`);
+            // logic.handleBankruptcy(payer, recipient);
+            return amountPaid;
+        }
+    }
+
+    countPlayerUtilities(player) {
+        return player.getUtilities().length;
+    }
+
+    countPlayerRailroads(player) {
+        return player.getRailroads().length;
+    }
+
+    // Placeholder for auction logic
+    startAuction(property, playerInitiated, io, gameCode) {
+        console.log(`[Logic] Auction started for ${property.name}. Initiated by ${playerInitiated.username}`);
+        this.auctionData = {
+            property,
+            highestBid: 0,
+            highestBidder: null,
+            participants: [...this.players], // All current players
+            currentPlayerIndex: this.players.indexOf(playerInitiated), // Or start with player after initiator
+        };
+        if (io && gameCode) { // Multiplayer
+            io.to(gameCode).emit("auction-started", {
+                propertyName: property.name,
+                propertyPos: property.pos,
+                currentBid: 0,
+                // nextBidderId: this.auctionData.participants[this.auctionData.currentPlayerIndex].id
+            });
+            // Need to manage bidding turns via client events "place-bid", "pass-auction"
+        } else { // Single-player
+            // Implement SP auction UI flow (e.g. via FixedUIScreen)
+            console.log("[Logic SP] Auction UI flow needs implementation.");
+        }
+    }
+    
+    // Add canBuildEvenly, canSellDevelopmentEvenly if they are not already in MonopolyBaseLogic
+    canBuildEvenly(player, propertyToBuildOn, colorGroup, type = 'house') {
+        // Simplified: Assumes player owns all in group.
+        // Real check: no other property in the group can be more than one house/hotel level below this one *before* building.
+        // And this property must be at the lowest level of development (or tied) to build a house.
+        // For hotels/skyscrapers, all others must have 4 houses/hotel respectively.
+        const groupProperties = this.board.filter(p => p.colorGroup === colorGroup && p.realEstateType === "property");
+        const devLevel = p => p.hasSkyscraper ? 6 : p.hasHotel ? 5 : (p.houses || 0);
+        
+        const currentDevLevel = devLevel(propertyToBuildOn);
+
+        if (type === 'house') {
+            if (currentDevLevel >= 4) return false; // Max houses or already hotel/skyscraper
+            // Can build a house if this property is at or below the minimum development level of the group (excluding hotels/skyscrapers on others)
+            const houseLevels = groupProperties.map(p => p.houses || 0);
+            return (propertyToBuildOn.houses || 0) <= Math.min(...houseLevels.filter(l => l < 5)); // only consider properties with < 5 houses (not hotel/skyscraper)
+        } else if (type === 'hotel') {
+            if (currentDevLevel !== 4) return false; // Must have 4 houses
+            // All other properties in the group must have 4 houses or a hotel/skyscraper
+            return groupProperties.every(p => devLevel(p) >= 4);
+        } else if (type === 'skyscraper') {
+            if (currentDevLevel !== 5) return false; // Must have a hotel
+            // All other properties in the group must have a hotel or a skyscraper
+            return groupProperties.every(p => devLevel(p) >= 5);
+        }
+        return false;
+    }
+
+    canSellDevelopmentEvenly(player, propertyToSellFrom, colorGroup) {
+        // Simplified: Can sell if this property is at or above the maximum development level of the group.
+        const groupProperties = this.board.filter(p => p.colorGroup === colorGroup && p.realEstateType === "property");
+        const devLevel = p => p.hasSkyscraper ? 6 : p.hasHotel ? 5 : (p.houses || 0);
+        const currentDevLevel = devLevel(propertyToSellFrom);
+        if (currentDevLevel === 0) return false; // Nothing to sell
+
+        const houseLevels = groupProperties.map(p => p.houses || 0);
+        return (propertyToSellFrom.houses || 0) >= Math.max(...houseLevels.filter(l => l < 5));
     }
 
     rollDice() {
@@ -115,30 +224,34 @@ class MonopolyBaseLogic {
                 player.inJail = false;
                 player.jailTurns = 0;
                 game.fixedUI.updateChatMessage(`${player.username} rolled doubles and gets out of Jail!`);
-                this.movePlayer(player, roll.d1 + roll.d2);
+                this.movePlayer(player, roll.d1 + roll.d2); // Player moves the sum of the doubles
                 game.render();
                 const landedSquare = game.board[player.position];
                 if (typeof landedSquare.onLand === "function") {
-                    landedSquare.onLand(player, game);
+                    landedSquare.onLand(player, game.logic, game); // Pass correct args
                 }
-                // Do NOT give another turn for doubles
+                game.fixedUI.updateChatMessage(`${player.username} moves ${roll.d1 + roll.d2} spaces.`);
+                game.fixedUI.enableEndTurnButton(true); // Allow the player to manually end their turn
             } else {
                 player.jailTurns++;
+                // If player fails to roll doubles 3 times, they must pay $50 and move
                 if (player.jailTurns >= 3) {
                     // Must pay $50 and move
                     player.bank -= 50;
                     player.inJail = false;
                     player.jailTurns = 0;
                     game.fixedUI.updateChatMessage(`${player.username} paid $50 after 3 turns and gets out of Jail.`);
-                    this.movePlayer(player, roll.d1 + roll.d2);
+                    this.movePlayer(player, roll.d1 + roll.d2); // Player moves sum of the failed roll
                     game.render();
                     const landedSquare = game.board[player.position];
                     if (typeof landedSquare.onLand === "function") {
-                        landedSquare.onLand(player, game);
+                        landedSquare.onLand(player, game.logic, game); // Pass correct args
                     }
+                    game.fixedUI.updateChatMessage(`${player.username} moves ${roll.d1 + roll.d2} spaces.`);
+                    game.fixedUI.enableEndTurnButton(true); // Allow the player to manually end their turn
                 } else {
                     game.fixedUI.updateChatMessage(`${player.username} did not roll doubles and remains in Jail.`);
-                    game.endTurn();
+                    game.fixedUI.enableEndTurnButton(true); // Allow the player to manually end their turn
                 }
             }
         };
@@ -150,7 +263,7 @@ class MonopolyBaseLogic {
             player.inJail = false;
             player.jailTurns = 0;
             game.fixedUI.updateChatMessage(`${player.username} paid $50 to get out of Jail.`);
-            game.startTurn(); // Let them roll and move
+            game.fixedUI.enableEndTurnButton(true); // Allow the player to manually end their turn
         };
 
         // Use Get Out of Jail Free card
@@ -161,7 +274,7 @@ class MonopolyBaseLogic {
                 player.inJail = false;
                 player.jailTurns = 0;
                 game.fixedUI.updateChatMessage(`${player.username} used a Get Out of Jail Free card!`);
-                game.startTurn(); // Let them roll and move
+                game.fixedUI.enableEndTurnButton(true); // Allow the player to manually end their turn
             } else {
                 game.fixedUI.updateChatMessage(`You do not have a Get Out of Jail Free card.`);
             }
@@ -249,133 +362,44 @@ class MonopolyBaseLogic {
         }
     }
 
-    moveTriples(player, game, onComplete) {
-        // Show instruction
-        const infoDiv = document.querySelector("#mm-info");
+    moveTriples(player, gameContext, onSquareChosen) { // gameContext is the SinglePlayerGame instance
+        const infoDiv = document.querySelector("#mm-info"); // Consider moving UI updates to FixedUIScreen via gameContext
         if (infoDiv) {
             infoDiv.innerHTML = `${player.username} rolled TRIPLES! Click any space on the board to move there.`;
         }
 
-        // Get mapping and board cells
-        const size = 14; // or get from game.renderGame if dynamic
-        const positions = game.renderGame.getBoardPositions(size);
+        const size = 14; // Or get from gameContext.renderGame.gridSize or similar
+        const positions = gameContext.renderGame.getBoardPositions(size);
         const boardCells = Array.from(document.querySelectorAll('#mm-board > div'));
 
-        // Handler function
         const handleCellClick = (e) => {
-            const cellIdx = boardCells.indexOf(e.currentTarget);
+            const cellDomElement = e.currentTarget;
+            const cellIdx = boardCells.indexOf(cellDomElement);
+            // Find the Monopoly board index (0-55) corresponding to the clicked DOM cell
             const clickedMonopolyIdx = positions.findIndex(
-                pos => pos.row * size + pos.col === cellIdx
+                pos => pos.row * size + pos.col === cellIdx // Assuming getBoardPositions maps 0-55 to row/col
             );
-            if (clickedMonopolyIdx === -1) return;
 
-            // Clean up: remove all handlers
-            positions.forEach(({row, col}) => {
-                const idx = row * size + col;
-                if (boardCells[idx]) {
-                    boardCells[idx].removeEventListener('click', handleCellClick);
-                    boardCells[idx].classList.remove('bus-ticket-highlight');
-                }
+            if (clickedMonopolyIdx === -1) { // Should not happen if highlighting is correct
+                console.warn("Clicked cell not found in board positions map", cellDomElement);
+                return;
+            }
+
+            // Clean up highlights and listeners
+            boardCells.forEach(cell => {
+                cell.removeEventListener('click', handleCellClick);
+                cell.classList.remove('bus-ticket-highlight'); // Ensure this class is defined and used for highlighting
             });
-
-            // Move player
-            player.position = clickedMonopolyIdx;
-            const landedSquare = game.board[player.position];
-
-            // Callback to continue game logic
-            if (typeof onComplete === "function") {
-                onComplete(landedSquare, clickedMonopolyIdx);
+            if (typeof onSquareChosen === "function") {
+                onSquareChosen(clickedMonopolyIdx);
             }
         };
 
-        // Highlight and attach click handler to every cell
-        positions.forEach(({row, col}, monopolyIdx) => {
-            const idx = row * size + col;
-            const cell = boardCells[idx];
-            if (!cell) return;
+        // Highlight all cells for the player to choose
+        boardCells.forEach(cell => {
             cell.classList.add('bus-ticket-highlight');
             cell.addEventListener('click', handleCellClick);
         });
-    }
-
-    /**
-     * Executes a trade between two players.
-     * @param {Object} trade - Trade object from the UI or RL agent.
-     *   {
-     *     from: Player,
-     *     to: Player,
-     *     offerProps: [PropertySpace|RailroadSpace|UtilitySpace],
-     *     wantProps: [PropertySpace|RailroadSpace|UtilitySpace],
-     *     offerMoney: number,
-     *     wantMoney: number,
-     *     offerJail: boolean,
-     *     wantJail: boolean
-     *   }
-     * @returns {boolean} success
-     */
-    executeTrade(trade) {
-        // Validate players
-        if (!trade.from || !trade.to || trade.from === trade.to) return false;
-
-        // Validate properties
-        const ownsAll = (player, props) =>
-            (props || []).every(prop => prop.owner === player);
-
-        if (!ownsAll(trade.from, trade.offerProps) || !ownsAll(trade.to, trade.wantProps)) {
-            return false; // Can't trade what you don't own
-        }
-
-        // Validate money
-        if ((trade.offerMoney || 0) > trade.from.bank) return false;
-        if ((trade.wantMoney || 0) > trade.to.bank) return false;
-
-        // Validate jail cards
-        if (trade.offerJail && (trade.from.getOutOfJailFree || 0) < 1) return false;
-        if (trade.wantJail && (trade.to.getOutOfJailFree || 0) < 1) return false;
-
-        // Transfer properties
-        (trade.offerProps || []).forEach(prop => {
-            this._transferProperty(trade.from, trade.to, prop);
-        });
-        (trade.wantProps || []).forEach(prop => {
-            this._transferProperty(trade.to, trade.from, prop);
-        });
-
-        // Transfer jail cards
-        if (trade.offerJail) {
-            trade.from.getOutOfJailFree--;
-            trade.to.getOutOfJailFree = (trade.to.getOutOfJailFree || 0) + 1;
-        }
-        if (trade.wantJail) {
-            trade.to.getOutOfJailFree--;
-            trade.from.getOutOfJailFree = (trade.from.getOutOfJailFree || 0) + 1;
-        }
-
-        // Transfer money
-        if (trade.offerMoney > 0) {
-            trade.from.bank -= trade.offerMoney;
-            trade.to.bank += trade.offerMoney;
-        }
-        if (trade.wantMoney > 0) {
-            trade.to.bank -= trade.wantMoney;
-            trade.from.bank += trade.wantMoney;
-        }
-
-        return true;
-    }
-
-    _transferProperty(from, to, prop) {
-        // Remove from old owner
-        ["properties", "railroads", "utilities"].forEach(type => {
-            if (from[type]) {
-                const idx = from[type].indexOf(prop);
-                if (idx !== -1) from[type].splice(idx, 1);
-            }
-        });
-        // Add to new owner
-        if (!to[prop.realEstateType + "s"]) to[prop.realEstateType + "s"] = [];
-        to[prop.realEstateType + "s"].push(prop);
-        prop.owner = to;
     }
 }
 

@@ -8,7 +8,7 @@ const chanceCards = require('../chance-cards');
 const communityChestCards = require('../community-chest-cards');
 const busTicketCards = require('../bus-ticket-cards');
 
-class MultiplayerGame {
+class MultiplayerGameClient {
     /**
      * @param {HTMLElement} container
      * @param {Array} playersInfo - Array of player objects from the server
@@ -57,11 +57,42 @@ class MultiplayerGame {
             onEndTurn: () => this.endTurn(),
             onQuit: () => { window.location.reload(); },
             onTrade: () => this.handleTrade(),
-            onSave: () => { /* save game logic */ },
-            onViewRealEstate: () => this.fixedUI.showRealEstateList(this.players[this.whosTurn], this.board)
+            // onSave: () => { /* save game logic */ }, // Multiplayer save is server-side
+            onViewRealEstate: () => {
+                const currentPlayer = this.players[this.whosTurn];
+                // Ensure it's this client's turn to open their own properties
+                if (currentPlayer && currentPlayer.id === this.mySocketId) {
+                    this.fixedUI.showRealEstateList(
+                        currentPlayer,
+                        this.board, // Client's local board copy
+                        { // Action Handlers for Multiplayer Client (emit to server)
+                            onDevelop: (prop) => {
+                                console.log(`[MP Client] Requesting develop for ${prop.name} (pos ${prop.pos})`);
+                                this.syncClient.developProperty(prop.pos, currentPlayer.id);
+                                // Modal will be refreshed/closed when server sends updates
+                            },
+                            onUndevelop: (prop) => {
+                                console.log(`[MP Client] Requesting undevelop for ${prop.name} (pos ${prop.pos})`);
+                                this.syncClient.undevelopProperty(prop.pos, currentPlayer.id);
+                            },
+                            onMortgage: (prop) => {
+                                console.log(`[MP Client] Requesting mortgage for ${prop.name} (pos ${prop.pos})`);
+                                this.syncClient.mortgageProperty(prop.pos, currentPlayer.id);
+                            },
+                            onUnmortgage: (prop) => {
+                                console.log(`[MP Client] Requesting unmortgage for ${prop.name} (pos ${prop.pos})`);
+                                this.syncClient.unmortgageProperty(prop.pos, currentPlayer.id);
+                            }
+                        }
+                    );
+                } else {
+                    // Optionally show a read-only view or a message if trying to view others' properties for management
+                    this.fixedUI.updateChatMessage("You can only manage your own properties on your turn.");
+                }
+            }
         });
 
-        this.setupSync();
+        this.setupSync(); // Ensure this is called
         this.render();
         this.fixedUI.updatePlayerInfo(this.players, this.whosTurn);
 
@@ -147,6 +178,88 @@ class MultiplayerGame {
         this.syncClient.socket.on("game-message", (message) => {
             console.log(`[MultiplayerGameClient ${this.mySocketId}] Received "game-message": ${message}`);
             this.fixedUI.updateChatMessage(message);
+        });
+
+        // NEW: Handle offer to buy property
+        this.syncClient.socket.on("offer-to-buy-property", ({ propertyPos, propertyName, price }) => {
+            console.log(`[MultiplayerGameClient ${this.mySocketId}] Received "offer-to-buy-property" for ${propertyName}`);
+            if (this.players[this.whosTurn] && this.players[this.whosTurn].id === this.mySocketId) {
+                // It's my turn and I'm being offered the property
+                const property = this.board[propertyPos]; // Get property from client's board instance
+                this.fixedUI.showBuyPropertyModal(property, this.players[this.whosTurn],
+                    () => { // onBuy
+                        this.syncClient.socket.emit("buy-property-decision", { gameCode: this.gameCode, propertyPos, accepted: true });
+                    },
+                    () => { // onDecline (Auction)
+                        this.syncClient.socket.emit("buy-property-decision", { gameCode: this.gameCode, propertyPos, accepted: false });
+                    }
+                );
+            }
+        });
+
+        // NEW: Handle auction started
+        this.syncClient.socket.on("auction-started", ({ propertyName, propertyPos, currentBid }) => {
+            console.log(`[MultiplayerGameClient ${this.mySocketId}] Received "auction-started" for ${propertyName}`);
+            const property = this.board[propertyPos];
+            this.fixedUI.showAuctionModal(property, currentBid, this.players, this.mySocketId, 
+                (bidAmount) => { // onPlaceBid
+                    this.syncClient.socket.emit("auction-place-bid", { gameCode: this.gameCode, propertyPos, bidAmount });
+                },
+                () => { // onPass
+                    this.syncClient.socket.emit("auction-pass", { gameCode: this.gameCode, propertyPos });
+                }
+            );
+        });
+
+        // NEW: Handle auction bid update (someone else bid)
+        this.syncClient.socket.on("auction-bid-update", ({ propertyName, propertyPos, currentBid, highestBidderName, nextBidderId }) => {
+            console.log(`[MultiplayerGameClient ${this.mySocketId}] Received "auction-bid-update" for ${propertyName}. New bid: ${currentBid} by ${highestBidderName}`);
+            // Update auction modal if it's open
+            this.fixedUI.updateAuctionModal(currentBid, highestBidderName, nextBidderId === this.mySocketId);
+        });
+        
+        // NEW: Handle auction ended
+        this.syncClient.socket.on("auction-ended", ({ propertyName, winnerName, winningBid }) => {
+            console.log(`[MultiplayerGameClient ${this.mySocketId}] Received "auction-ended" for ${propertyName}. Winner: ${winnerName}, Bid: ${winningBid}`);
+            this.fixedUI.closeAuctionModal();
+            this.fixedUI.updateChatMessage(`Auction for ${propertyName} ended. ${winnerName ? `${winnerName} won with a bid of $${winningBid}.` : 'No bids were placed.'}`);
+        });
+
+        this.syncClient.socket.on("property-updated", ({ pos, ownerId, isMortgaged, houses, hasHotel, hasSkyscraper, hasDepot }) => {
+            console.log(`[MP Client] Received "property-updated" for pos ${pos}:`, { ownerId, isMortgaged, houses, hasHotel, hasSkyscraper, hasDepot });
+            const property = this.board[pos];
+            if (property) {
+                if (ownerId !== undefined) { // ownerId could be null if sold to bank (not typical for develop/mortgage)
+                    property.owner = this.players.find(p => p.id === ownerId) || null;
+                }
+                if (isMortgaged !== undefined) property.isMortgaged = isMortgaged;
+                if (houses !== undefined) property.houses = houses;
+                if (hasHotel !== undefined) property.hasHotel = hasHotel;
+                if (hasSkyscraper !== undefined) property.hasSkyscraper = hasSkyscraper;
+                if (hasDepot !== undefined && property.realEstateType === 'railroad') property.hasDepot = hasDepot;
+
+                // If the real estate modal is open for the current player, refresh it
+                const modal = document.getElementById("realestate-modal");
+                const currentPlayer = this.players[this.whosTurn];
+                if (modal && currentPlayer && currentPlayer.id === this.mySocketId) {
+                    // Re-invoke showRealEstateList to refresh its content
+                    // This requires the callbacks to be accessible or re-passed.
+                    // For simplicity, we might just close it and let the user reopen,
+                    // or the FixedUIScreen needs a more direct refresh method.
+                    // Let's assume for now the user might need to reopen or the game's `render()` handles UI updates.
+                    // A simple approach:
+                    // if (document.getElementById("realestate-modal")) {
+                    //    document.getElementById("realestate-modal").remove(); // Close it
+                    //    this.fixedUI.updateChatMessage("Property updated. Re-open list to see changes.");
+                    // }
+                }
+                this.render(); // Re-render game board visuals if needed (e.g., house icons)
+            }
+        });
+
+        this.syncClient.socket.on("action-failed", ({ reason }) => {
+            console.warn(`[MP Client] Server reported action failed: ${reason}`);
+            alert(`Action failed: ${reason}`); // Simple alert for now
         });
     }
 
@@ -254,4 +367,4 @@ class MultiplayerGame {
     }
 }
 
-module.exports = MultiplayerGame;
+module.exports = MultiplayerGameClient;

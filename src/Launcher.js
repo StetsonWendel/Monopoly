@@ -1,7 +1,7 @@
 const { io } = require("socket.io-client");
 const MonopolySyncClient = require("./games/mega-monopoly/Multiplayer/MonopolySyncClient");
 // Make sure MultiplayerGame is also required if not already
-const MultiplayerGame = require('./games/mega-monopoly/Multiplayer/MultiplayerGameClient');
+const MultiplayerGameClient = require('./games/mega-monopoly/Multiplayer/MultiplayerGameClient');
 const SinglePlayerGame = require('./games/mega-monopoly/SinglePlayerGame'); // Assuming you have this
 
 // Establish the ONE main socket connection
@@ -250,7 +250,7 @@ class Launcher {
                     return;
                 }
                 
-                this.currentGameInstance = new MultiplayerGame(
+                this.currentGameInstance = new MultiplayerGameClient(
                     this.gameContainer,   
                     this.players,         
                     syncClientInstance,

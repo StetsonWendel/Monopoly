@@ -173,12 +173,12 @@ class FixedUIScreen {
         ).join("");
     }
 
-    enableEndTurnButton(enable) {
-        if (this.endTurnButton) {
-            this.endTurnButton.disabled = !enable;
-            console.log(`[FixedUIScreen] End Turn button ${enable ? 'enabled' : 'disabled'}.`);
-        } else {
-            console.warn("[FixedUIScreen] End Turn button not found in enableEndTurnButton.");
+    enableEndTurnButton(enabled) {
+        const endTurnBtn = document.getElementById("end-turn-btn");
+        if (endTurnBtn) {
+            endTurnBtn.disabled = !enabled;
+            endTurnBtn.style.opacity = enabled ? "1" : "0.5";
+            endTurnBtn.style.cursor = enabled ? "pointer" : "not-allowed";
         }
     }
 
@@ -196,14 +196,23 @@ class FixedUIScreen {
         });
     }
 
-    showRealEstateList(player, board) {
+    /**
+     * Shows the real estate list modal.
+     * @param {Player} player - The current player.
+     * @param {BoardSpace[]} board - The game board.
+     * @param {Object} actionHandlers - Callbacks for actions.
+     * @param {Function} actionHandlers.onDevelop - (property) => void
+     * @param {Function} actionHandlers.onUndevelop - (property) => void
+     * @param {Function} actionHandlers.onMortgage - (property) => void
+     * @param {Function} actionHandlers.onUnmortgage - (property) => void
+     */
+    showRealEstateList(player, board, actionHandlers = {}, logic = null) {
         const properties = [
             ...(player.properties || []),
             ...(player.railroads || []),
             ...(player.utilities || [])
         ];
 
-        // Group properties by colorGroup or type
         const groups = {};
         properties.forEach(prop => {
             const group = prop.colorGroup || prop.realEstateType || "Other";
@@ -211,12 +220,11 @@ class FixedUIScreen {
             groups[group].push(prop);
         });
 
-        // Remove any existing modal
         let oldModal = document.getElementById("realestate-modal");
         if (oldModal) oldModal.remove();
 
-        // Create modal
         const modal = document.createElement("div");
+        // ... (modal styling) ...
         modal.id = "realestate-modal";
         modal.style.position = "fixed";
         modal.style.left = "0";
@@ -230,6 +238,7 @@ class FixedUIScreen {
         modal.style.justifyContent = "center";
 
         const box = document.createElement("div");
+        // ... (box styling) ...
         box.style.background = "#fff";
         box.style.padding = "24px";
         box.style.borderRadius = "12px";
@@ -239,11 +248,12 @@ class FixedUIScreen {
         box.style.overflowY = "auto";
         box.style.position = "relative"; // For absolute positioning of the X
 
+
         box.innerHTML += `<h3 style="margin-top:0;">Your Properties</h3>`;
 
-        // Toggle button for Develop/Mortgage-Undevelop mode
         let mode = "develop";
         const toggleBtn = document.createElement("button");
+        // ... (toggleBtn styling and logic) ...
         toggleBtn.textContent = "Switch to Mortgage/Undevelop";
         toggleBtn.style.position = "absolute";
         toggleBtn.style.top = "10px";
@@ -256,13 +266,13 @@ class FixedUIScreen {
         toggleBtn.onclick = () => {
             mode = mode === "develop" ? "mortgage" : "develop";
             toggleBtn.textContent = mode === "develop" ? "Switch to Mortgage/Undevelop" : "Switch to Develop";
-            // Re-render property list in new mode
             renderPropertyList();
         };
         box.appendChild(toggleBtn);
 
-        // Add X close button at the top right (after innerHTML)
+
         const xBtn = document.createElement("button");
+        // ... (xBtn styling and logic) ...
         xBtn.textContent = "×";
         xBtn.style.position = "absolute";
         xBtn.style.top = "10px";
@@ -274,7 +284,7 @@ class FixedUIScreen {
         xBtn.onclick = () => document.body.removeChild(modal);
         box.appendChild(xBtn);
 
-        // Container for property groups
+
         const groupsContainer = document.createElement("div");
         box.appendChild(groupsContainer);
 
@@ -282,133 +292,96 @@ class FixedUIScreen {
             groupsContainer.innerHTML = "";
             Object.keys(groups).forEach(group => {
                 const groupDiv = document.createElement("div");
+                // ... (groupDiv styling) ...
                 groupDiv.style.marginBottom = "18px";
                 groupDiv.innerHTML = `<div style="font-weight:bold; margin-bottom:4px;">${group.replace(/\b\w/g, c => c.toUpperCase())}</div>`;
 
+
                 groups[group].forEach(prop => {
                     const row = document.createElement("div");
+                    // ... (row styling) ...
                     row.style.display = "flex";
                     row.style.alignItems = "center";
                     row.style.marginBottom = "6px";
-                    row.innerHTML = `<span style="flex:1; margin-right:16px;">${prop.name}</span>`;
+                    row.innerHTML = `<span style="flex:1; margin-right:16px;">${prop.name} ${prop.isMortgaged ? '(Mortgaged)' : ''}</span>`;
+
 
                     if (mode === "develop") {
-                        // DEVELOP MODE
-                        if (prop.realEstateType === "property" && typeof prop.canDevelop === "function") {
-                            const { canBuild, nextDev, reason, buildingCost } = prop.canDevelop(player, board, groups);
+                        if ((prop.realEstateType === "property" || prop.realEstateType === "railroad") && typeof prop.canDevelop === "function" && actionHandlers.onDevelop) {
+                            // Assuming prop.canDevelop takes (player, logic_or_board_context)
+                            // For UI, we might simplify or assume logic is implicitly handled by the game instance
+                            // For FixedUIScreen, it's better if canDevelop doesn't need complex logic objects directly
+                            // Or, the game instance (SP or MP client) pre-calculates this.
+                            // For now, let's assume canDevelop can be called with player.
+                            // The `board` argument to `showRealEstateList` can be used if `canDevelop` needs it.
+                            // The `logic` instance is not directly available here, so `canDevelop` on the client-side
+                            // property object might need to be simpler or rely on data already on the property/player.
+                            // A better way for MP is for the server to send `canDevelop` status.
+                            // For SP, `prop.canDevelop(player, game.logic)` would be called by the game.
+
+                            // Simplified client-side check for button text, actual validation is server-side for MP
+                            let canDevelopInfo = { canBuild: true, nextDev: "Next", buildingCost: prop.buildingCost || 100 };
+                            if (typeof prop.canDevelop === 'function') {
+                                // In SP, this `board` is the game board. In MP client, it's the client's board.
+                                // `logic` is not available here. `canDevelop` on client-side `prop` might be limited.
+                                // This is a tricky part for a shared UI component.
+                                // Let's assume `canDevelop` on the `prop` object itself can give some indication.
+                                // The true validation for MP is on the server.
+                                try {
+                                   canDevelopInfo = prop.canDevelop(player, logic);
+                                } catch (e) { /* might fail if logic is strictly required */ }
+                            }
+
 
                             const devBtn = document.createElement("button");
-                            devBtn.textContent = canBuild ? `Develop ${nextDev}` : "Develop";
-                            devBtn.disabled = !canBuild || player.bank < buildingCost;
+                            devBtn.textContent = canDevelopInfo.canBuild ? `Develop ${canDevelopInfo.nextDev || ''} ($${canDevelopInfo.buildingCost || prop.buildingCost})` : "Develop";
+                            devBtn.disabled = !canDevelopInfo.canBuild || player.money < (canDevelopInfo.buildingCost || prop.buildingCost);
+                            // ... (devBtn styling) ...
                             devBtn.style.opacity = devBtn.disabled ? "0.5" : "1";
                             devBtn.style.cursor = devBtn.disabled ? "not-allowed" : "pointer";
-                            if (devBtn.disabled && reason) devBtn.title = reason;
+                            if (devBtn.disabled && canDevelopInfo.reason) devBtn.title = canDevelopInfo.reason;
+
                             devBtn.onclick = () => {
                                 if (devBtn.disabled) return;
-                                if (player.bank < buildingCost) {
-                                    alert("Not enough money to develop!");
-                                    return;
-                                }
-                                if (prop.develop && prop.develop()) {
-                                    if (typeof prop.renderDevelopment === "function") {
-                                        prop.renderDevelopment();
-                                    }
-                                    this.updateChatMessage &&
-                                        this.updateChatMessage(`${player.username} developed ${prop.name}!`);
-                                    document.body.removeChild(modal);
-                                    this.showRealEstateList(player, board);
-                                } else {
-                                    alert("Unable to develop this property.");
-                                }
+                                actionHandlers.onDevelop(prop); // Call the provided handler
+                                // UI will be updated based on game state changes (SP) or server events (MP)
+                                // No need to close modal here immediately unless actionHandlers do it.
                             };
                             row.appendChild(devBtn);
-                        } else if (prop.realEstateType === "railroad" && typeof prop.canDevelop === "function") {
-                            const { canBuild, reason } = prop.canDevelop(player);
-
-                            const depotBtn = document.createElement("button");
-                            depotBtn.textContent = canBuild ? "Develop ($100)" : "Develop";
-                            depotBtn.disabled = !canBuild;
-                            depotBtn.style.opacity = depotBtn.disabled ? "0.5" : "1";
-                            depotBtn.style.cursor = depotBtn.disabled ? "not-allowed" : "pointer";
-                            if (depotBtn.disabled && reason) depotBtn.title = reason;
-                            depotBtn.onclick = () => {
-                                if (depotBtn.disabled) return;
-                                if (player.bank < 100) {
-                                    alert("Not enough money to build depot!");
-                                    return;
-                                }
-                                if (prop.buildDepot && prop.buildDepot()) {
-                                    if (typeof prop.renderDevelopment === "function") {
-                                        prop.renderDevelopment();
-                                    }
-                                    this.updateChatMessage &&
-                                        this.updateChatMessage(`${player.username} built a depot on ${prop.name}!`);
-                                    document.body.removeChild(modal);
-                                    this.showRealEstateList(player, board);
-                                } else {
-                                    alert("Unable to build depot.");
-                                }
-                            };
-                            row.appendChild(depotBtn);
                         }
-                    } else {
-                        // MORTGAGE/UNDEVELOP MODE
-                        // Undevelop button for properties/railroads
-                        if (typeof prop.undevelop === "function") {
+                    } else { // Mortgage/Undevelop mode
+                        if (typeof prop.undevelop === "function" && actionHandlers.onUndevelop) {
+                            // Check if there's anything to undevelop (e.g., houses > 0, hasHotel, etc.)
+                            const canUndevelop = prop.houses > 0 || prop.hasHotel || prop.hasSkyscraper || prop.hasDepot;
                             const undevelopBtn = document.createElement("button");
                             undevelopBtn.textContent = "Undevelop";
-                            undevelopBtn.disabled = false;
+                            undevelopBtn.disabled = !canUndevelop;
+                            // ... (undevelopBtn styling) ...
                             undevelopBtn.style.marginRight = "8px";
+                            undevelopBtn.style.opacity = undevelopBtn.disabled ? "0.5" : "1";
+                            undevelopBtn.style.cursor = undevelopBtn.disabled ? "not-allowed" : "pointer";
                             undevelopBtn.onclick = () => {
-                                let result;
-                                if (prop.realEstateType === "property") {
-                                    result = prop.undevelop(player, board, groups);
-                                } else {
-                                    result = prop.undevelop(player);
-                                }
-                                if (result.success) {
-                                    if (typeof prop.renderDevelopment === "function") {
-                                        prop.renderDevelopment();
-                                    }
-                                    this.updateChatMessage &&
-                                        this.updateChatMessage(`${player.username} sold development on ${prop.name} for $${result.refund}.`);
-                                    document.body.removeChild(modal);
-                                    this.showRealEstateList(player, board);
-                                } else {
-                                    alert(result.reason || "Unable to undevelop.");
-                                }
+                                if (undevelopBtn.disabled) return;
+                                actionHandlers.onUndevelop(prop);
                             };
                             row.appendChild(undevelopBtn);
                         }
-                        // Mortgage/unmortgage button for all buyable spaces
-                        if (typeof prop.mortgage === "function" && !prop.isMortgaged) {
+                        if (typeof prop.mortgage === "function" && !prop.isMortgaged && actionHandlers.onMortgage) {
                             const mortgageBtn = document.createElement("button");
                             mortgageBtn.textContent = `Mortgage (+$${prop.mortgageValue})`;
-                            mortgageBtn.onclick = () => {
-                                const result = prop.mortgage(player);
-                                if (result.success) {
-                                    this.updateChatMessage &&
-                                        this.updateChatMessage(`${player.username} mortgaged ${prop.name} for $${result.amount}.`);
-                                    document.body.removeChild(modal);
-                                    this.showRealEstateList(player, board);
-                                } else {
-                                    alert(result.reason || "Unable to mortgage.");
-                                }
-                            };
+                            mortgageBtn.onclick = () => actionHandlers.onMortgage(prop);
                             row.appendChild(mortgageBtn);
-                        } else if (typeof prop.unmortgage === "function" && prop.isMortgaged) {
+                        } else if (typeof prop.unmortgage === "function" && prop.isMortgaged && actionHandlers.onUnmortgage) {
                             const unmortgageBtn = document.createElement("button");
-                            unmortgageBtn.textContent = `Unmortgage (-$${Math.ceil(prop.mortgageValue * 1.1)})`;
+                            const unmortgageCost = Math.ceil(prop.mortgageValue * 1.1);
+                            unmortgageBtn.textContent = `Unmortgage (-$${unmortgageCost})`;
+                            unmortgageBtn.disabled = player.money < unmortgageCost;
+                            // ... (unmortgageBtn styling) ...
+                            unmortgageBtn.style.opacity = unmortgageBtn.disabled ? "0.5" : "1";
+                            unmortgageBtn.style.cursor = unmortgageBtn.disabled ? "not-allowed" : "pointer";
                             unmortgageBtn.onclick = () => {
-                                const result = prop.unmortgage(player);
-                                if (result.success) {
-                                    this.updateChatMessage &&
-                                        this.updateChatMessage(`${player.username} unmortgaged ${prop.name} for $${result.cost}.`);
-                                    document.body.removeChild(modal);
-                                    this.showRealEstateList(player, board);
-                                } else {
-                                    alert(result.reason || "Unable to unmortgage.");
-                                }
+                                if (unmortgageBtn.disabled) return;
+                                actionHandlers.onUnmortgage(prop);
                             };
                             row.appendChild(unmortgageBtn);
                         }
@@ -419,14 +392,15 @@ class FixedUIScreen {
             });
         }
 
-        renderPropertyList();
+        renderPropertyList(); // Initial render
 
-        // Bottom close button (optional, keep for accessibility)
         const closeBtn = document.createElement("button");
+        // ... (closeBtn styling and logic) ...
         closeBtn.textContent = "Close";
         closeBtn.style.marginTop = "12px";
         closeBtn.onclick = () => document.body.removeChild(modal);
         box.appendChild(closeBtn);
+
 
         modal.appendChild(box);
         document.body.appendChild(modal);
@@ -690,6 +664,46 @@ class FixedUIScreen {
 
         modal.appendChild(box);
         document.body.appendChild(modal);
+    }
+
+    showBuyPropertyModal(property, player, onBuy, onDecline) {
+        // Simple modal implementation
+        const modal = document.createElement("div");
+        modal.style.position = "fixed";
+        modal.style.left = "0";
+        modal.style.top = "0";
+        modal.style.width = "100vw";
+        modal.style.height = "100vh";
+        modal.style.background = "#0008";
+        modal.style.zIndex = "9999";
+        modal.style.display = "flex";
+        modal.style.alignItems = "center";
+        modal.style.justifyContent = "center";
+
+        const box = document.createElement("div");
+        box.style.background = "#fff";
+        box.style.padding = "24px";
+        box.style.borderRadius = "12px";
+        box.style.maxWidth = "400px";
+        box.style.boxShadow = "0 2px 12px #0003";
+        box.innerHTML = `
+        <h3>Buy ${property.name}?</h3>
+        <p>Price: $${property.price}</p>
+        <button id="buy-prop-btn">Buy</button>
+        <button id="decline-prop-btn">Decline</button>
+    `;
+
+        modal.appendChild(box);
+        document.body.appendChild(modal);
+
+        document.getElementById("buy-prop-btn").onclick = () => {
+            document.body.removeChild(modal);
+            if (onBuy) onBuy();
+        };
+        document.getElementById("decline-prop-btn").onclick = () => {
+            document.body.removeChild(modal);
+            if (onDecline) onDecline();
+        };
     }
 }
 
